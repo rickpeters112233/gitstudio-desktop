@@ -214,13 +214,23 @@ export const GitTools: React.FC<GitToolsProps> = ({
 
               <div className="flex items-center gap-2">
                 {lastPullReport && (
-                  <button
-                    onClick={() => onOpenReportModal(lastPullReport)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs transition-colors"
-                  >
-                    <FileText className="w-3.5 h-3.5 text-sky-400" />
-                    <span>View HTML</span>
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => onOpenReportModal(lastPullReport)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs transition-colors"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-sky-400" />
+                      <span>View HTML</span>
+                    </button>
+                    <a
+                      href={`/api/reports/${lastPullReport.id}/download`}
+                      download
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs transition-colors"
+                      title="Download HTML report directly"
+                    >
+                      <Download className="w-3.5 h-3.5 text-emerald-400" />
+                    </a>
+                  </div>
                 )}
               </div>
             </div>
@@ -299,13 +309,23 @@ export const GitTools: React.FC<GitToolsProps> = ({
 
               <div className="flex items-center gap-2">
                 {lastDailyReport && (
-                  <button
-                    onClick={() => onOpenReportModal(lastDailyReport)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs transition-colors"
-                  >
-                    <FileText className="w-3.5 h-3.5 text-amber-400" />
-                    <span>View HTML</span>
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => onOpenReportModal(lastDailyReport)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs transition-colors"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-amber-400" />
+                      <span>View HTML</span>
+                    </button>
+                    <a
+                      href={`/api/reports/${lastDailyReport.id}/download`}
+                      download
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-300 text-xs transition-colors"
+                      title="Download HTML report directly"
+                    >
+                      <Download className="w-3.5 h-3.5 text-emerald-400" />
+                    </a>
+                  </div>
                 )}
               </div>
             </div>

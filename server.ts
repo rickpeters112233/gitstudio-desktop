@@ -703,6 +703,35 @@ app.post('/api/git/terminal', (req: Request, res: Response) => {
   res.json({ output, exitCode, cwd: currentPath, command: trimmed });
 });
 
+// Helper to physically write generated HTML reports to disk (C:\git\reports and project reports folder)
+function saveReportToDisk(filename: string, content: string): string {
+  const targetDirs = [
+    process.platform === 'win32' ? 'C:\\git\\reports' : '/git/reports',
+    path.join(__dirname, 'reports'),
+    path.join(process.cwd(), 'reports'),
+  ];
+
+  let primarySavedPath = '';
+
+  for (const dir of targetDirs) {
+    try {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const fullPath = path.join(dir, filename);
+      fs.writeFileSync(fullPath, content, 'utf-8');
+      console.log(`[Report Persisted] Successfully wrote report to: ${fullPath}`);
+      if (!primarySavedPath) {
+        primarySavedPath = fullPath;
+      }
+    } catch (err: any) {
+      console.warn(`[Report Notice] Could not write to ${dir}:`, err.message);
+    }
+  }
+
+  return primarySavedPath || `C:\\git\\reports\\${filename}`;
+}
+
 // 6. Batch "Git Pull All" Tool (Matching user screenshot)
 app.post('/api/batch/pull-all', async (req: Request, res: Response) => {
   const { scope = 'all' } = req.body;
@@ -799,11 +828,14 @@ app.post('/api/batch/pull-all', async (req: Request, res: Response) => {
 </html>
   `;
 
+  const pullFilename = `git_pull_all_${dateStr}.html`;
+  const savedPullPath = saveReportToDisk(pullFilename, htmlReport);
+
   const reportItem = {
     id: `pull-${Date.now()}`,
     type: 'pull_all' as const,
     timestamp: new Date().toISOString(),
-    path: `C:\\git\\reports\\git_pull_all_${dateStr}.html`,
+    path: savedPullPath,
     title: `Git Pull All (${scope.toUpperCase()}) - ${dateStr}`,
     summary: {
       total,
@@ -887,11 +919,14 @@ app.post('/api/batch/daily-report', async (req: Request, res: Response) => {
 </html>
   `;
 
+  const dailyFilename = `daily_report_${dateStr}.html`;
+  const savedDailyPath = saveReportToDisk(dailyFilename, htmlReport);
+
   const reportItem = {
     id: `report-${Date.now()}`,
     type: 'daily_report' as const,
     timestamp: new Date().toISOString(),
-    path: `C:\\git\\reports\\daily_report_${dateStr}.html`,
+    path: savedDailyPath,
     title: `GitHub Daily Report - ${dateStr}`,
     summary: {
       total: totalRepos,
@@ -916,6 +951,15 @@ app.post('/api/batch/daily-report', async (req: Request, res: Response) => {
 // 8. List Saved Reports
 app.get('/api/reports', (req: Request, res: Response) => {
   res.json(reportsHistory);
+});
+
+// 8b. Download Specific Report HTML
+app.get('/api/reports/:id/download', (req: Request, res: Response) => {
+  const report = reportsHistory.find((r) => r.id === req.params.id);
+  if (!report) return res.status(404).send('Report not found');
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${path.basename(report.path)}"`);
+  res.send(report.htmlContent);
 });
 
 // Binary Download Endpoint for Complete Desktop Codebase ZIP
