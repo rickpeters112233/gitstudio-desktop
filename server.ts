@@ -109,7 +109,9 @@ async function syncAllGithubRepos(): Promise<RepoItem[]> {
   for (const target of targets) {
     try {
       const endpoint = target.type === 'user'
-        ? `https://api.github.com/users/${target.name}/repos?per_page=100&sort=updated`
+        ? (GITHUB_TOKEN
+            ? `https://api.github.com/user/repos?visibility=all&affiliation=owner&per_page=100&sort=updated`
+            : `https://api.github.com/users/${target.name}/repos?per_page=100&sort=updated`)
         : `https://api.github.com/orgs/${target.name}/repos?per_page=100&sort=updated`;
 
       const data = await fetchGithub(endpoint);

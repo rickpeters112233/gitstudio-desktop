@@ -51,7 +51,11 @@ function Sync-GroupRepos {
         $page = 1
         $repos = @()
         do {
-            $url = "https://api.github.com/$TargetType/$Name/repos?per_page=100&page=$page&sort=updated"
+            $url = if ($TargetType -eq "users" -and $token) {
+                "https://api.github.com/user/repos?visibility=all&affiliation=owner&per_page=100&page=$page&sort=updated"
+            } else {
+                "https://api.github.com/$TargetType/$Name/repos?per_page=100&page=$page&sort=updated"
+            }
             $batch = Invoke-RestMethod -Uri $url -Headers $headers -Method Get
             if ($batch.Count -gt 0) {
                 $repos += $batch
