@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
+import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 
@@ -389,18 +390,53 @@ app.post('/api/git/action', (req: Request, res: Response) => {
   switch (action) {
     case 'clone': {
       const localDest = repo ? repo.localPath : `c:/git/${repoName}`;
-      output = [
-        `$ git clone https://github.com/${repoFullName}.git "${localDest}"`,
-        `Cloning into '${localDest}'...`,
-        `remote: Enumerating objects: 142, done.`,
-        `remote: Counting objects: 100% (142/142), done.`,
-        `remote: Compressing objects: 100% (89/89), done.`,
-        `remote: Total 142 (delta 48), reused 130 (delta 40), pack-reused 0`,
-        `Receiving objects: 100% (142/142), 2.45 MiB | 1.80 MiB/s, done.`,
-        `Resolving deltas: 100% (48/48), done.`,
-        `Successfully cloned ${repoFullName} into ${localDest}.`,
-      ].join('\n');
-      if (repo) {
+      const normalizedDest = process.platform === 'win32'
+        ? localDest.replace(/\//g, '\\')
+        : localDest;
+
+      const parentDir = path.dirname(normalizedDest);
+      try {
+        if (!fs.existsSync(parentDir)) {
+          fs.mkdirSync(parentDir, { recursive: true });
+        }
+      } catch (err: any) {
+        console.warn('Could not create parent folder:', err.message);
+      }
+
+      const cloneUrl = GITHUB_TOKEN
+        ? `https://${GITHUB_TOKEN}@github.com/${repoFullName}.git`
+        : `https://github.com/${repoFullName}.git`;
+
+      console.log(`[REAL CLONE] Executing: git clone ${cloneUrl.replace(/ghp_[^@]+/, 'TOKEN')} "${normalizedDest}"`);
+      try {
+        const execOut = execSync(`git clone ${cloneUrl} "${normalizedDest}"`, {
+          encoding: 'utf-8',
+          stdio: 'pipe',
+          timeout: 60000,
+        });
+        output = [
+          `$ git clone https://github.com/${repoFullName}.git "${normalizedDest}"`,
+          execOut ? execOut.trim() : `Cloning into '${normalizedDest}'... done.`,
+          `SUCCESS: Repository ${repoFullName} cloned into ${normalizedDest}`,
+        ].filter(Boolean).join('\n');
+        success = true;
+      } catch (err: any) {
+        const stderr = err.stderr ? err.stderr.toString() : '';
+        const stdout = err.stdout ? err.stdout.toString() : '';
+        const errMsg = stderr || stdout || err.message;
+        if (errMsg.includes('already exists and is not an empty directory')) {
+          output = `Directory "${normalizedDest}" already exists on your hard drive and contains files.`;
+          success = true;
+        } else {
+          output = [
+            `$ git clone https://github.com/${repoFullName}.git "${normalizedDest}"`,
+            `FAILED: ${errMsg.trim()}`,
+          ].join('\n');
+          success = false;
+        }
+      }
+
+      if (repo && success) {
         repo.status = 'up_to_date';
         repo.lastSync = new Date().toISOString();
       }
@@ -408,18 +444,33 @@ app.post('/api/git/action', (req: Request, res: Response) => {
     }
 
     case 'pull': {
-      output = [
-        `$ git fetch origin ${targetBranch}`,
-        `From https://github.com/${repoFullName}`,
-        ` * branch            ${targetBranch}     -> FETCH_HEAD`,
-        `$ git merge origin/${targetBranch}`,
-        `Updating 8f2c3d1..a912e4b`,
-        `Fast-forward`,
-        ` src/engine.ts        |  14 ++++++--`,
-        ` package.json         |   2 +-`,
-        ` 2 files changed, 13 insertions(+), 3 deletions(-)`,
-        `Sync complete: c:/git/${repoName} is now up to date with origin/${targetBranch}.`,
-      ].join('\n');
+      const localDest = repo ? repo.localPath : `c:/git/${repoName}`;
+      const normalizedDest = process.platform === 'win32'
+        ? localDest.replace(/\//g, '\\')
+        : localDest;
+
+      if (fs.existsSync(normalizedDest)) {
+        try {
+          const res = execSync(`git -C "${normalizedDest}" pull`, {
+            encoding: 'utf-8',
+            stdio: 'pipe',
+            timeout: 30000,
+          });
+          output = [
+            `$ git -C "${normalizedDest}" pull`,
+            res.trim() || 'Already up to date.',
+          ].join('\n');
+        } catch (err: any) {
+          output = `git pull failed:\n${(err.stderr || err.stdout || err.message).toString()}`;
+        }
+      } else {
+        output = [
+          `$ git fetch origin ${targetBranch}`,
+          `Notice: ${normalizedDest} is not yet cloned on your hard drive.`,
+          `Please click 'Clone to Desktop' first to download the files.`,
+        ].join('\n');
+      }
+
       if (repo) {
         repo.status = 'up_to_date';
         repo.lastSync = new Date().toISOString();
