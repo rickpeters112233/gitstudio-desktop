@@ -56,7 +56,7 @@ function Sync-GroupRepos {
                 $alreadyThere++
             } else {
                 Write-Host "  [CLONING] $($r.name) into $dest..." -ForegroundColor Yellow
-                $cloneUrl = $r.clone_url.Replace("https://", "https://$token@")
+                $cloneUrl = if ($token) { $r.clone_url.Replace("https://", "https://${token}@") } else { $r.clone_url }
                 git clone --quiet $cloneUrl $dest
                 if ($LASTEXITCODE -eq 0) {
                     Write-Host "  [OK]      Successfully cloned $($r.name)" -ForegroundColor Green
@@ -67,9 +67,9 @@ function Sync-GroupRepos {
             }
         }
 
-        Write-Host "`nSummary for $Name: $cloned newly cloned, $alreadyThere already up-to-date." -ForegroundColor Green
+        Write-Host "`nSummary for ${Name}: $cloned newly cloned, $alreadyThere already up-to-date." -ForegroundColor Green
     } catch {
-        Write-Host "[ERROR] Failed to query $Name`: $_" -ForegroundColor Red
+        Write-Host "[ERROR] Failed to query ${Name}: $_" -ForegroundColor Red
     }
 }
 
