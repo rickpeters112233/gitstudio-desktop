@@ -19,6 +19,14 @@ if (-not $token -and (Test-Path ".env")) {
         $token = ($envContent -split "=", 2)[1].Trim('"').Trim("'")
     }
 }
+if (-not $token) {
+    Write-Host "GitHub Personal Access Token is required to access organization repositories (Tribernachi-Foundation)." -ForegroundColor Yellow
+    $token = Read-Host "Please enter your GitHub Personal Access Token (ghp_...)"
+    if ($token) {
+        "GITHUB_TOKEN=`"$token`"" | Out-File -FilePath ".env" -Encoding utf8
+        Write-Host "Saved token to local .env file for future runs." -ForegroundColor Green
+    }
+}
 
 $headers = @{
     "User-Agent" = "GitStudioCloner"
@@ -41,8 +49,16 @@ function Sync-GroupRepos {
     }
 
     try {
-        $url = "https://api.github.com/$TargetType/$Name/repos?per_page=100&sort=updated"
-        $repos = Invoke-RestMethod -Uri $url -Headers $headers -Method Get
+        $page = 1
+        $repos = @()
+        do {
+            $url = "https://api.github.com/$TargetType/$Name/repos?per_page=100&page=$page&sort=updated"
+            $batch = Invoke-RestMethod -Uri $url -Headers $headers -Method Get
+            if ($batch.Count -gt 0) {
+                $repos += $batch
+                $page++
+            }
+        } while ($batch.Count -eq 100)
 
         Write-Host "Found $($repos.Count) repositories under $Name." -ForegroundColor Green
 
