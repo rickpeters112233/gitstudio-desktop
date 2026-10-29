@@ -20,6 +20,7 @@ import {
   Layers,
   Clock,
   ShieldAlert,
+  DownloadCloud,
 } from 'lucide-react';
 import { RepoItem, CommitItem } from '../types';
 
@@ -76,8 +77,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
     );
   }
 
-  // Handle Git Action (Push, Pull, Archive, Stash, Checkout)
-  const handleGitAction = async (action: 'pull' | 'push' | 'archive' | 'stash' | 'checkout', branchParam?: string) => {
+  // Handle Git Action (Push, Pull, Archive, Stash, Checkout, Clone)
+  const handleGitAction = async (action: 'pull' | 'push' | 'archive' | 'stash' | 'checkout' | 'clone', branchParam?: string) => {
     setIsPerformingAction(action);
     setActionLog(null);
     try {
@@ -225,6 +226,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
         {/* Primary Git Action Buttons */}
         <div className="flex items-center gap-2">
+          {/* Clone Button */}
+          <button
+            onClick={() => handleGitAction('clone')}
+            disabled={isPerformingAction !== null}
+            title={`Clone this repository to ${repo.localPath}`}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-amber-600 hover:bg-amber-500 text-slate-950 shadow-sm transition-colors disabled:opacity-50"
+          >
+            <DownloadCloud className={`w-3.5 h-3.5 ${isPerformingAction === 'clone' ? 'animate-bounce' : ''}`} />
+            <span>Clone to Desktop</span>
+          </button>
+
           {/* Pull Button */}
           <button
             onClick={() => handleGitAction('pull')}

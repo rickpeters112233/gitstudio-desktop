@@ -387,6 +387,26 @@ app.post('/api/git/action', (req: Request, res: Response) => {
   let success = true;
 
   switch (action) {
+    case 'clone': {
+      const localDest = repo ? repo.localPath : `c:/git/${repoName}`;
+      output = [
+        `$ git clone https://github.com/${repoFullName}.git "${localDest}"`,
+        `Cloning into '${localDest}'...`,
+        `remote: Enumerating objects: 142, done.`,
+        `remote: Counting objects: 100% (142/142), done.`,
+        `remote: Compressing objects: 100% (89/89), done.`,
+        `remote: Total 142 (delta 48), reused 130 (delta 40), pack-reused 0`,
+        `Receiving objects: 100% (142/142), 2.45 MiB | 1.80 MiB/s, done.`,
+        `Resolving deltas: 100% (48/48), done.`,
+        `Successfully cloned ${repoFullName} into ${localDest}.`,
+      ].join('\n');
+      if (repo) {
+        repo.status = 'up_to_date';
+        repo.lastSync = new Date().toISOString();
+      }
+      break;
+    }
+
     case 'pull': {
       output = [
         `$ git fetch origin ${targetBranch}`,
