@@ -1,0 +1,6 @@
+{
+  "name": "GitStudio Desktop - Repository Manager & Terminal",
+  "description": "Desktop Git GUI for managing, pulling, pushing, and archiving repositories across GestaltCE, Tribernachi Foundation, and personal workspaces with integrated terminal, commit history, batch tools, and AI troubleshooting agent.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
