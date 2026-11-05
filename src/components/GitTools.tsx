@@ -10,6 +10,9 @@ import {
   ShieldAlert,
   Terminal,
   Download,
+  Copy,
+  Check,
+  ExternalLink,
 } from 'lucide-react';
 import { GitReport } from '../types';
 
@@ -28,43 +31,22 @@ export const GitTools: React.FC<GitToolsProps> = ({
   const [pullScope, setPullScope] = useState<'all' | 'gestaltce' | 'trib' | 'rick'>('all');
   const [isPullRunning, setIsPullRunning] = useState(false);
   const [pullStatus, setPullStatus] = useState<'idle' | 'running' | 'done'>('idle');
+  const [hasCopiedPs, setHasCopiedPs] = useState(false);
   const [pullLog, setPullLog] = useState<string>(
     [
-      'superstreamer-proof-of-performance [main] ... UP TO DATE',
-      'tce [master] ... UP TO DATE',
-      'TEM-E [main] ... UP TO DATE',
-      'tgss-mem [main] ... UP TO DATE',
-      'TMS [main] ... UP TO DATE',
-      'tribernachi-coherent-substrate [master] ... UP TO DATE',
-      'Tribernachi-Elements [main] ... UP TO DATE',
-      'tribernachi-empirical-catalog [main] ... UP TO DATE',
-      'Tribernachi-Foundation [main] ... >> remote: Repository not found.',
-      "fatal: repository 'https://github.com/GestaltCE/Tribernachi-Foundation.git/' not found",
-      'PULL FAILED (switched dead branch -> main)',
-      'Tribernachi-Memory-Layer [master] ... UP TO DATE',
-      'tribernachi-micronode-demo [main] ... UP TO DATE',
-      'tribernachi-m1 [main] ... STASH WARN',
-      'tribernachi-prime-demo [main] ... UP TO DATE',
-      'tribernachi-site [master] ... UP TO DATE',
-      'tribernachi-skills [master] ... UP TO DATE',
-      'tribernachi-style [master] ... UP TO DATE',
-      'tribernachi-trust [master] ... UP TO DATE',
-      'ttem-platform [master] ... UP TO DATE',
-      'vitrea [main] ... UP TO DATE',
-      'web-estate [master] ... UP TO DATE',
-      'whatsapp-bridge [master] ... UP TO DATE',
-      'wiki [main] ... UP TO DATE',
-      'word-cloud [main] ... UP TO DATE',
+      '==============================================================',
+      '        GitStudio Desktop — Batch Git Synchronization         ',
+      '==============================================================',
+      'Target Directories:',
+      '  - GestaltCE:              C:\\git',
+      '  - Tribernachi-Foundation:  C:\\git\\trib',
+      '  - rickpeters112233:       C:\\git\\rick',
+      'Reports Path:               C:\\git\\reports',
+      '==============================================================',
       '',
-      '=====================================',
-      'Total repos     : 84',
-      'Updated         : 1',
-      'Up to date      : 69',
-      'Cloned new      : 0',
-      'Switched branch : 7',
-      'Failed          : 14',
-      `Report saved    : C:\\git\\reports\\git_pull_all_${new Date().toISOString().slice(0, 10)}.html`,
-      '=====================================',
+      'Ready to synchronize repositories.',
+      'Click "Run Git Pull All" below to execute batch pull.',
+      'You can also run .\\pull-all-workspaces.bat directly in Windows.',
     ].join('\n')
   );
   const [lastPullReport, setLastPullReport] = useState<GitReport | null>(null);
@@ -213,6 +195,19 @@ export const GitTools: React.FC<GitToolsProps> = ({
               </div>
 
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText('powershell -ExecutionPolicy Bypass -File .\\pull-all-workspaces.ps1');
+                    setHasCopiedPs(true);
+                    setTimeout(() => setHasCopiedPs(false), 2000);
+                  }}
+                  title="Copy PowerShell batch pull command for Windows terminal"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs transition-colors"
+                >
+                  {hasCopiedPs ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+                  <span>{hasCopiedPs ? 'Copied PS Cmd' : 'Copy PS Cmd'}</span>
+                </button>
+
                 {lastPullReport && (
                   <div className="flex items-center gap-1.5">
                     <button

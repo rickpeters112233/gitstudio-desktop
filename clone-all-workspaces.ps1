@@ -19,12 +19,8 @@ if (-not $token -and (Test-Path ".env")) {
         $token = ($envContent -split "=", 2)[1].Trim('"').Trim("'")
     }
 }
-if (-not $token) {
-    # Default authorization token for rickpeters112233 & Tribernachi-Foundation
-    $token = @('ghp', 'ujYlOmZKzBTQ49Z2SmfxEHWV4zrhTZ0uE2fZ') -join '_'
-    if (-not (Test-Path ".env")) {
-        "GITHUB_TOKEN=`"$token`"" | Out-File -FilePath ".env" -Encoding utf8
-    }
+if ($token -and $token.Contains("ujYlOmZKzBTQ49Z2SmfxEHWV4zrhTZ0uE2fZ")) {
+    $token = ""
 }
 
 $headers = @{
@@ -71,8 +67,14 @@ function Sync-GroupRepos {
         foreach ($r in $repos) {
             $dest = Join-Path $BasePath $r.name
             if (Test-Path $dest) {
-                Write-Host "  [EXISTS]  $($r.name) is already at $dest" -ForegroundColor DarkGray
-                $alreadyThere++
+                Write-Host "  [PULLING] $($r.name) in $dest..." -NoNewline -ForegroundColor Cyan
+                git -C $dest pull --ff-only --quiet 2>$null
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host " [OK]" -ForegroundColor Green
+                    $alreadyThere++
+                } else {
+                    Write-Host " [ATTN]" -ForegroundColor Yellow
+                }
             } else {
                 Write-Host "  [CLONING] $($r.name) into $dest..." -ForegroundColor Yellow
                 $cloneUrl = if ($token) { $r.clone_url.Replace("https://", "https://${token}@") } else { $r.clone_url }

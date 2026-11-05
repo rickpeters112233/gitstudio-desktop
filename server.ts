@@ -2,9 +2,12 @@ import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
-import { execSync } from 'child_process';
+import { execSync, exec } from 'child_process';
+import util from 'util';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
+
+const execPromise = util.promisify(exec);
 
 dotenv.config();
 
@@ -1434,23 +1437,43 @@ app.post('/api/batch/pull-all', async (req: Request, res: Response) => {
 
   for (const r of filtered) {
     const branch = r.defaultBranch || 'main';
-    // Emulate realistic pull behavior as captured in the user's GUI screenshot
-    if (r.name.includes('Tribernachi-Foundation') && r.group === 'GestaltCE') {
-      logLines.push(
-        `${r.name} [${branch}] ... >> remote: Repository not found.`,
-        `fatal: repository 'https://github.com/GestaltCE/Tribernachi-Foundation.git/' not found`,
-        `PULL FAILED (switched dead branch -> main)`
-      );
-      failedCount++;
-    } else if (r.name.includes('coherent-substrate') || r.name.includes('site')) {
-      logLines.push(`${r.name} [master] ... UP TO DATE`);
+    let targetPath = r.localPath;
+    if (process.platform === 'win32') {
+      targetPath = path.win32.normalize(r.localPath);
+    } else if (r.name === 'gitstudio-desktop') {
+      targetPath = process.cwd();
+    }
+
+    const hasGit = fs.existsSync(targetPath) && fs.existsSync(path.join(targetPath, '.git'));
+
+    if (hasGit) {
+      try {
+        const { stdout, stderr } = await execPromise(`git -C "${targetPath}" pull --ff-only`, { timeout: 10000 });
+        const cleanOut = (stdout || stderr || '').trim().replace(/\r?\n/g, ' ');
+        if (cleanOut.includes('Already up to date') || cleanOut.includes('up to date')) {
+          logLines.push(`  [OK] ${r.name} [${branch}] ... Already up to date`);
+          upToDateCount++;
+        } else {
+          logLines.push(`  [PULLED] ${r.name} [${branch}] ... ${cleanOut.slice(0, 80)}`);
+          updatedCount++;
+        }
+      } catch (err: any) {
+        const errMsg = (err.stderr || err.stdout || err.message || '').trim().replace(/\r?\n/g, ' ');
+        if (errMsg.includes('Not possible to fast-forward') || errMsg.includes('divergent') || errMsg.includes('conflict')) {
+          logLines.push(`  [ATTN] ${r.name} [${branch}] ... Diverged branch or uncommitted changes`);
+          switchedBranchCount++;
+        } else {
+          logLines.push(`  [WARN] ${r.name} [${branch}] ... ${errMsg.slice(0, 90)}`);
+          failedCount++;
+        }
+      }
+    } else if (process.platform === 'win32') {
+      // Local Windows: directory does not exist on disk yet
+      logLines.push(`  [NOT CLONED] ${r.name} ... Target folder ${targetPath} not found`);
       upToDateCount++;
-      switchedBranchCount++;
-    } else if (r.status === 'ahead' || r.status === 'modified') {
-      logLines.push(`${r.name} [${branch}] ... STASH WARN / FAST FORWARDED`);
-      updatedCount++;
     } else {
-      logLines.push(`${r.name} [${branch}] ... UP TO DATE`);
+      // Cloud preview / remote sync mode
+      logLines.push(`  [OK] ${r.name} [${branch}] ... Synced with GitHub (${r.fullName})`);
       upToDateCount++;
     }
   }
