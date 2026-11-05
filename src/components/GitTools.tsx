@@ -195,6 +195,16 @@ export const GitTools: React.FC<GitToolsProps> = ({
               </div>
 
               <div className="flex items-center gap-2">
+                <a
+                  href="/pull-all-workspaces.bat"
+                  download="pull-all-workspaces.bat"
+                  title="Download pull-all-workspaces.bat directly into C:\git\gitstudio"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-emerald-700/80 bg-emerald-950/50 hover:bg-emerald-900/50 text-emerald-300 text-xs font-medium transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Download pull-all.bat</span>
+                </a>
+
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText('powershell -ExecutionPolicy Bypass -File .\\pull-all-workspaces.ps1');
