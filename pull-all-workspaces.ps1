@@ -1,6 +1,6 @@
 # ==============================================================
-# GitStudio Desktop - Batch Git Pull Tool for All Workspaces
-# Pulls every local Git repository in:
+# GitStudio Desktop - Batch Git Pull & Sync Tool for All Workspaces
+# Pulls every local Git repository and clones missing ones in:
 #   - C:\git               (GestaltCE)
 #   - C:\git\trib          (Tribernachi-Foundation)
 #   - C:\git\rick          (rickpeters112233)
@@ -20,10 +20,31 @@ if (-not (Test-Path $reportsDir)) {
     New-Item -ItemType Directory -Path $reportsDir -Force | Out-Null
 }
 
+# 1. Resolve GitHub Personal Access Token
+$token = $env:GITHUB_TOKEN
+if (-not $token -and (Test-Path ".env")) {
+    $envContent = Get-Content ".env" | Where-Object { $_ -match "^GITHUB_TOKEN=" }
+    if ($envContent) {
+        $token = ($envContent -split "=", 2)[1].Trim('"').Trim("'")
+    }
+}
+if ($token -and $token.Contains("ujYlOmZKzBTQ49Z2SmfxEHWV4zrhTZ0uE2fZ")) {
+    $token = ""
+}
+
+# Load masterCatalog.json for full workspace coverage
+$catalogFile = "masterCatalog.json"
+$masterCatalog = @()
+if (Test-Path $catalogFile) {
+    try {
+        $masterCatalog = Get-Content $catalogFile -Raw | ConvertFrom-Json
+    } catch {}
+}
+
 $workspaceMap = @(
-    @{ Name = "GestaltCE Core"; Path = "C:\git"; Scope = "gestaltce" },
-    @{ Name = "Tribernachi Foundation"; Path = "C:\git\trib"; Scope = "trib" },
-    @{ Name = "Rick Peters Personal"; Path = "C:\git\rick"; Scope = "rick" }
+    @{ Name = "GestaltCE Core"; Path = "C:\git"; Scope = "gestaltce"; Group = "GestaltCE" },
+    @{ Name = "Tribernachi Foundation"; Path = "C:\git\trib"; Scope = "trib"; Group = "Tribernachi-Foundation" },
+    @{ Name = "Rick Peters Personal"; Path = "C:\git\rick"; Scope = "rick"; Group = "rickpeters112233" }
 )
 
 Write-Host "==============================================================" -ForegroundColor Cyan
@@ -31,13 +52,18 @@ Write-Host "          GitStudio Desktop - Batch Git Pull Tool             " -For
 Write-Host "==============================================================" -ForegroundColor Cyan
 Write-Host "Date/Time: $dateStr $timeStr"
 Write-Host "Reports Directory: $reportsDir" -ForegroundColor Yellow
+if ($token) {
+    Write-Host "GitHub Authentication: Active (PAT Loaded)" -ForegroundColor Green
+} else {
+    Write-Host "GitHub Authentication: Public / Unauthenticated" -ForegroundColor DarkGray
+}
 Write-Host "==============================================================`n" -ForegroundColor Cyan
 
 $totalCount = 0
 $upToDateCount = 0
 $updatedCount = 0
+$clonedCount = 0
 $failedCount = 0
-$skippedCount = 0
 $logLines = [System.Collections.Generic.List[string]]::new()
 
 foreach ($ws in $workspaceMap) {
@@ -47,57 +73,91 @@ foreach ($ws in $workspaceMap) {
 
     $wsName = $ws.Name
     $wsPath = $ws.Path
+    $wsGroup = $ws.Group
 
-    Write-Host ">> Scanning $wsName at $wsPath..." -ForegroundColor Cyan
+    Write-Host ">> Synchronizing $wsName at $wsPath..." -ForegroundColor Cyan
     $logLines.Add(">> Workspace: $wsName ($wsPath)")
 
     if (-not (Test-Path $wsPath)) {
-        Write-Host "   [MISSING] Workspace directory $wsPath does not exist yet." -ForegroundColor DarkGray
-        $logLines.Add("   [MISSING] Workspace directory $wsPath does not exist.")
-        continue
+        New-Item -ItemType Directory -Path $wsPath -Force | Out-Null
     }
 
-    # Find immediate subdirectories that are git repos
-    $subDirs = Get-ChildItem -Path $wsPath -Directory
-    # Special check: If C:\git, avoid recursing into C:\git\trib and C:\git\rick
-    if ($wsPath -eq "C:\git") {
-        $subDirs = $subDirs | Where-Object { $_.Name -ne "trib" -and $_.Name -ne "rick" -and $_.Name -ne "reports" }
-    }
+    # Gather repositories from masterCatalog for this group
+    $groupRepos = $masterCatalog | Where-Object { $_.group -eq $wsGroup }
 
-    foreach ($dir in $subDirs) {
-        $gitDir = Join-Path $dir.FullName ".git"
-        if (-not (Test-Path $gitDir)) {
-            continue
-        }
-
-        $totalCount++
-        $repoName = $dir.Name
-        $repoPath = $dir.FullName
-
-        # Detect active branch
-        $branch = (git -C $repoPath rev-parse --abbrev-ref HEAD 2>$null)
-        if (-not $branch) { $branch = "main" }
-
-        Write-Host "   [$repoName] ($branch) Pulling..." -NoNewline -ForegroundColor White
-
-        $pullOutput = (git -C $repoPath pull --ff-only 2>&1 | Out-String).Trim()
-
-        if ($LASTEXITCODE -eq 0) {
-            if ($pullOutput -match "Already up to date" -or $pullOutput -match "up to date") {
-                Write-Host " [UP TO DATE]" -ForegroundColor Green
-                $upToDateCount++
-                $logLines.Add("   [OK] $repoName [$branch] ... UP TO DATE")
-            } else {
-                Write-Host " [UPDATED]" -ForegroundColor Cyan
-                $updatedCount++
-                $firstLine = ($pullOutput -split "`n")[0]
-                $logLines.Add("   [UPDATED] $repoName [$branch] ... $firstLine")
+    if ($groupRepos.Count -gt 0) {
+        foreach ($r in $groupRepos) {
+            $totalCount++
+            $repoName = $r.name
+            $repoPath = Join-Path $wsPath $repoName
+            $cloneUrl = $r.htmlUrl + ".git"
+            if ($token) {
+                $cloneUrl = $cloneUrl.Replace("https://", "https://${token}@")
             }
-        } else {
-            Write-Host " [ATTENTION]" -ForegroundColor Yellow
-            $failedCount++
-            $firstErr = ($pullOutput -split "`n")[0]
-            $logLines.Add("   [WARN] $repoName [$branch] ... $firstErr")
+
+            if (Test-Path (Join-Path $repoPath ".git")) {
+                Write-Host "   [$repoName] Pulling..." -NoNewline -ForegroundColor White
+                if ($token) {
+                    git -C $repoPath remote set-url origin $cloneUrl 2>$null
+                }
+                $pullOutput = (git -C $repoPath pull --ff-only 2>&1 | Out-String).Trim()
+
+                if ($LASTEXITCODE -eq 0) {
+                    if ($pullOutput -match "Already up to date" -or $pullOutput -match "up to date") {
+                        Write-Host " [UP TO DATE]" -ForegroundColor Green
+                        $upToDateCount++
+                        $logLines.Add("   [OK] $repoName ... UP TO DATE")
+                    } else {
+                        Write-Host " [UPDATED]" -ForegroundColor Cyan
+                        $updatedCount++
+                        $firstLine = ($pullOutput -split "`n")[0]
+                        $logLines.Add("   [UPDATED] $repoName ... $firstLine")
+                    }
+                } else {
+                    Write-Host " [ATTENTION]" -ForegroundColor Yellow
+                    $failedCount++
+                    $firstErr = ($pullOutput -split "`n")[0]
+                    $logLines.Add("   [WARN] $repoName ... $firstErr")
+                }
+            } else {
+                Write-Host "   [$repoName] Not yet on disk. Cloning..." -NoNewline -ForegroundColor Yellow
+                git clone --quiet $cloneUrl $repoPath
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host " [CLONED]" -ForegroundColor Green
+                    $clonedCount++
+                    $logLines.Add("   [CLONED] $repoName ... Successfully cloned")
+                } else {
+                    Write-Host " [FAIL]" -ForegroundColor Red
+                    $failedCount++
+                    $logLines.Add("   [FAIL] $repoName ... Clone failed")
+                }
+            }
+        }
+    } else {
+        # Fallback to scanning existing local directory if catalog not matched
+        $subDirs = Get-ChildItem -Path $wsPath -Directory
+        if ($wsPath -eq "C:\git") {
+            $subDirs = $subDirs | Where-Object { $_.Name -ne "trib" -and $_.Name -ne "rick" -and $_.Name -ne "reports" }
+        }
+        foreach ($dir in $subDirs) {
+            $gitDir = Join-Path $dir.FullName ".git"
+            if (-not (Test-Path $gitDir)) { continue }
+
+            $totalCount++
+            $repoName = $dir.Name
+            $repoPath = $dir.FullName
+            Write-Host "   [$repoName] Pulling..." -NoNewline -ForegroundColor White
+
+            $pullOutput = (git -C $repoPath pull --ff-only 2>&1 | Out-String).Trim()
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host " [OK]" -ForegroundColor Green
+                $upToDateCount++
+                $logLines.Add("   [OK] $repoName ... UP TO DATE")
+            } else {
+                Write-Host " [ATTN]" -ForegroundColor Yellow
+                $failedCount++
+                $logLines.Add("   [WARN] $repoName ... $pullOutput")
+            }
         }
     }
     Write-Host ""
@@ -108,7 +168,8 @@ $summaryBox = @"
 Total Repositories  : $totalCount
 Already Up to Date  : $upToDateCount
 Updated / Merged    : $updatedCount
-Attention / Modified: $failedCount
+Newly Cloned        : $clonedCount
+Attention / Warn    : $failedCount
 Reports Saved Path  : $reportsDir\git_pull_all_$dateStr.html
 =====================================
 "@
@@ -126,9 +187,9 @@ $htmlContent = @"
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0b0f19; color: #f8fafc; padding: 2rem; margin: 0; }
     h1 { color: #38bdf8; font-size: 1.5rem; margin-bottom: 0.25rem; }
     .subtitle { color: #94a3b8; font-size: 0.9rem; margin-bottom: 1.5rem; }
-    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin: 1.5rem 0; }
+    .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; margin: 1.5rem 0; }
     .card { background: #131c31; border: 1px solid #1e293b; padding: 1.25rem; border-radius: 8px; }
-    .card-val { font-size: 2.2rem; font-weight: 700; color: #f8fafc; font-family: monospace; }
+    .card-val { font-size: 2rem; font-weight: 700; color: #f8fafc; font-family: monospace; }
     .card-lbl { font-size: 0.85rem; color: #94a3b8; margin-top: 0.25rem; }
     pre { background: #050811; border: 1px solid #1e293b; padding: 1.25rem; border-radius: 8px; font-family: Consolas, monospace; font-size: 13px; color: #38bdf8; overflow-x: auto; line-height: 1.6; }
     .footer { margin-top: 1.5rem; font-size: 0.8rem; color: #64748b; }
@@ -138,10 +199,11 @@ $htmlContent = @"
   <h1>GitStudio Desktop - Batch Git Pull Report</h1>
   <div class="subtitle">Generated on $dateStr at $timeStr | Target Workspaces: C:\git, C:\git\trib, C:\git\rick</div>
   <div class="grid">
-    <div class="card"><div class="card-val">$totalCount</div><div class="card-lbl">Total Repos Checked</div></div>
+    <div class="card"><div class="card-val">$totalCount</div><div class="card-lbl">Total Repos</div></div>
     <div class="card"><div class="card-val" style="color: #4ade80;">$upToDateCount</div><div class="card-lbl">Up to Date</div></div>
-    <div class="card"><div class="card-val" style="color: #60a5fa;">$updatedCount</div><div class="card-lbl">Updated / Merged</div></div>
-    <div class="card"><div class="card-val" style="color: #f87171;">$failedCount</div><div class="card-lbl">Attention Needed</div></div>
+    <div class="card"><div class="card-val" style="color: #60a5fa;">$updatedCount</div><div class="card-lbl">Updated</div></div>
+    <div class="card"><div class="card-val" style="color: #a78bfa;">$clonedCount</div><div class="card-lbl">Newly Cloned</div></div>
+    <div class="card"><div class="card-val" style="color: #f87171;">$failedCount</div><div class="card-lbl">Attention</div></div>
   </div>
   <h3>Console Execution Log</h3>
   <pre>$([System.Web.HttpUtility]::HtmlEncode(($logLines -join "`n") + "`n`n" + $summaryBox))</pre>
