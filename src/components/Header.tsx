@@ -51,36 +51,37 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="h-14 border-b border-slate-800 bg-slate-950/80 backdrop-blur px-4 flex items-center justify-between gap-8 shrink-0 select-none">
+    <header className="h-14 border-b border-slate-800 bg-slate-950/80 backdrop-blur px-3 flex items-center justify-between gap-3 overflow-x-auto overflow-y-hidden select-none shrink-0 scrollbar-none">
       {/* Zone 1: Brand Wordmark */}
-      <div className="flex items-center gap-3 shrink-0">
-        <div className="w-8 h-8 rounded bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center text-white shadow-sm shadow-orange-500/20 font-bold">
-          <GitBranch className="w-5 h-5" />
+      <div className="flex items-center gap-2.5 shrink-0">
+        <div className="w-7 h-7 rounded bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center text-white shadow-sm shadow-orange-500/20 font-bold">
+          <GitBranch className="w-4 h-4" />
         </div>
         <div className="flex flex-col">
-          <span className="text-sm font-semibold tracking-tight text-slate-100 whitespace-nowrap">
+          <span className="text-xs font-semibold tracking-tight text-slate-100 whitespace-nowrap">
             GitStudio Desktop
           </span>
-          <span className="text-[11px] font-mono text-slate-400 whitespace-nowrap">
+          <span className="text-[10px] font-mono text-slate-400 whitespace-nowrap">
             v2.4.0 · C:\git
           </span>
         </div>
       </div>
 
-      {/* Zone 2: Navigation Tabs (Single line, whitespace-nowrap) */}
-      <nav className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-lg border border-slate-800">
+      {/* Zone 2: Navigation Tabs (Single line, compact) */}
+      <nav className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-lg border border-slate-800 shrink-0">
         <button
           onClick={() => setActiveTab('dashboard')}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+          title="Repository Dashboard"
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'dashboard'
               ? 'bg-slate-800 text-slate-100 shadow-sm'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
           <Layers className="w-3.5 h-3.5" />
-          <span>Repository Dashboard</span>
+          <span>Dashboard</span>
           {activeRepo && (
-            <span className="text-[10px] text-amber-400 font-mono px-1.5 py-0.2 bg-amber-950/50 rounded border border-amber-800/60 max-w-[140px] truncate">
+            <span className="text-[10px] text-amber-400 font-mono px-1.5 py-0.2 bg-amber-950/50 rounded border border-amber-800/60 max-w-[110px] truncate">
               {activeRepo.name}
             </span>
           )}
@@ -88,116 +89,120 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           onClick={() => setActiveTab('tools')}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+          title="Git Tools (Batch Pull All & Daily Report)"
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'tools'
               ? 'bg-slate-800 text-slate-100 shadow-sm'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
           <FolderGit2 className="w-3.5 h-3.5 text-blue-400" />
-          <span>Git Tools (Pull All & Daily Report)</span>
+          <span>Git Tools</span>
         </button>
 
         <button
           onClick={() => setActiveTab('terminal')}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+          title="Terminal CLI"
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'terminal'
               ? 'bg-slate-800 text-slate-100 shadow-sm'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
           <Terminal className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Terminal CLI</span>
+          <span>Terminal</span>
         </button>
 
         <button
           onClick={() => setActiveTab('troubleshoot')}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
+          title="Troubleshooting Agent"
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap shrink-0 ${
             activeTab === 'troubleshoot'
               ? 'bg-slate-800 text-slate-100 shadow-sm'
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
           <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-          <span>Troubleshooting Agent</span>
+          <span>Troubleshoot</span>
         </button>
       </nav>
 
-      {/* Zone 3: Account & Primary Actions */}
-      <div className="flex items-center gap-3 shrink-0">
+      {/* Zone 3: Account & Primary Actions (Prioritizing API/Token button first) */}
+      <div className="flex items-center gap-2 shrink-0">
         <button
           onClick={onRefreshRepos}
           disabled={isRefreshing}
           title="Refresh All Repositories"
-          className="p-2 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-transparent hover:border-slate-800 transition-colors"
+          className="p-1.5 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-900 border border-transparent hover:border-slate-800 transition-colors"
         >
-          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-amber-400' : ''}`} />
+          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-amber-400' : ''}`} />
+        </button>
+
+        {/* PRIMARY: API / Personal Access Token Button placed up front */}
+        <button
+          onClick={onOpenTokenModal}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-medium border transition-colors whitespace-nowrap shrink-0 ${
+            profile?.tokenStatus === 'valid'
+              ? 'bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300 border-emerald-800/80 shadow-sm'
+              : profile?.tokenStatus === 'invalid'
+              ? 'bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 border-rose-800 animate-pulse'
+              : 'bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 border-amber-800/80'
+          }`}
+          title="Configure GitHub API Key / Personal Access Token"
+        >
+          <Key className="w-3.5 h-3.5 text-amber-400" />
+          <span>
+            {profile?.tokenStatus === 'valid'
+              ? 'API: Active'
+              : profile?.tokenStatus === 'invalid'
+              ? 'API: 401 Error'
+              : 'API / Token'}
+          </span>
         </button>
 
         <button
           onClick={handleDownloadZip}
           disabled={isDownloading}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shadow-sm whitespace-nowrap shrink-0 disabled:opacity-50"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors shadow-sm whitespace-nowrap shrink-0 disabled:opacity-50"
           title="Download complete project ZIP file to run on your desktop"
         >
           <Download className={`w-3.5 h-3.5 ${isDownloading ? 'animate-bounce' : ''}`} />
-          <span>{isDownloading ? 'Downloading...' : 'Download App (.zip)'}</span>
+          <span>{isDownloading ? 'Downloading...' : 'Download ZIP'}</span>
         </button>
 
         <button
           onClick={onOpenRunGuide}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 transition-colors whitespace-nowrap shrink-0"
+          className="flex items-center gap-1.5 px-2 py-1.5 rounded text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700/80 transition-colors whitespace-nowrap shrink-0"
           title="View instructions on running locally"
         >
-          <HelpCircle className="w-3.5 h-3.5" />
-          <span>How to Run</span>
-        </button>
-
-        <button
-          onClick={onOpenTokenModal}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-colors whitespace-nowrap shrink-0 ${
-            profile?.tokenStatus === 'valid'
-              ? 'bg-slate-850 hover:bg-slate-800 text-emerald-300 border-slate-700'
-              : profile?.tokenStatus === 'invalid'
-              ? 'bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 border-rose-800/80 animate-pulse'
-              : 'bg-slate-800 hover:bg-slate-700 text-amber-300 border-slate-700'
-          }`}
-          title="Configure GitHub Personal Access Token"
-        >
-          <Key className="w-3.5 h-3.5" />
-          <span>
-            {profile?.tokenStatus === 'valid'
-              ? 'PAT Active'
-              : profile?.tokenStatus === 'invalid'
-              ? 'PAT Invalid (401)'
-              : 'Set Token'}
-          </span>
+          <HelpCircle className="w-3.5 h-3.5 text-amber-300" />
+          <span>Guide</span>
         </button>
 
         <button
           onClick={onOpenCloneModal}
-          className="px-3 py-1.5 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors whitespace-nowrap shrink-0"
+          className="px-2.5 py-1.5 rounded text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700/80 transition-colors whitespace-nowrap shrink-0"
         >
-          + Clone / Add Repo
+          + Clone
         </button>
 
         {profile && (
           <button
             onClick={onOpenTokenModal}
-            className="flex items-center gap-2 pl-2 border-l border-slate-800 hover:bg-slate-900/50 p-1 rounded transition-colors text-left"
-            title="Account & Token Settings"
+            className="flex items-center gap-1.5 pl-2 border-l border-slate-800 hover:bg-slate-900/50 p-1 rounded transition-colors text-left"
+            title="GitHub Account & Token Settings"
           >
             <img
               src={profile.avatarUrl}
               alt={profile.username}
-              className="w-7 h-7 rounded-full border border-slate-700"
+              className="w-6 h-6 rounded-full border border-slate-700"
             />
             <div className="flex flex-col text-right">
-              <span className="text-xs font-medium text-slate-200 leading-tight">
+              <span className="text-[11px] font-medium text-slate-200 leading-tight truncate max-w-[100px]">
                 {profile.username}
               </span>
               <span
-                className={`text-[10px] flex items-center justify-end gap-1 font-mono ${
+                className={`text-[9px] flex items-center justify-end gap-1 font-mono ${
                   profile.tokenStatus === 'valid'
                     ? 'text-emerald-400'
                     : profile.tokenStatus === 'invalid'
@@ -207,16 +212,14 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 {profile.tokenStatus === 'valid' ? (
                   <>
-                    <CheckCircle2 className="w-2.5 h-2.5" /> Connected
+                    <CheckCircle2 className="w-2.5 h-2.5" /> OK
                   </>
                 ) : profile.tokenStatus === 'invalid' ? (
                   <>
-                    <AlertTriangle className="w-2.5 h-2.5" /> Token 401
+                    <AlertTriangle className="w-2.5 h-2.5" /> 401
                   </>
                 ) : (
-                  <>
-                    <CheckCircle2 className="w-2.5 h-2.5" /> Public Mode
-                  </>
+                  'Public'
                 )}
               </span>
             </div>

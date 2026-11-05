@@ -38,13 +38,23 @@ export default function App() {
       .catch((err) => console.error('Failed to load profile', err));
   };
 
-  // Fetch initial profile & repositories
+  // Fetch initial profile & repositories & keyboard shortcuts
   useEffect(() => {
     // 1. Fetch Profile
     loadProfile();
 
     // 2. Fetch Repositories
     loadRepositories(false);
+
+    // 3. Alt+T keyboard shortcut for API / Token modal
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.altKey && (e.key === 't' || e.key === 'T')) || (e.ctrlKey && e.shiftKey && (e.key === 't' || e.key === 'T'))) {
+        e.preventDefault();
+        setIsTokenModalOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const loadRepositories = async (force: boolean = false) => {
@@ -116,6 +126,8 @@ export default function App() {
             setActiveTab('dashboard');
           }}
           isLoading={isLoadingRepos}
+          onOpenTokenModal={() => setIsTokenModalOpen(true)}
+          tokenStatus={profile?.tokenStatus}
         />
 
         {/* Center Canvas: Active View */}

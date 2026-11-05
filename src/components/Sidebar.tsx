@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronRight, Folder, GitBranch, AlertCircle, ArrowUpRight, ArrowDownLeft, Clock, Filter } from 'lucide-react';
+import { Search, ChevronDown, ChevronRight, Folder, GitBranch, AlertCircle, ArrowUpRight, ArrowDownLeft, Clock, Filter, Key } from 'lucide-react';
 import { RepoItem } from '../types';
 
 interface SidebarProps {
@@ -7,6 +7,8 @@ interface SidebarProps {
   selectedRepo: RepoItem | null;
   onSelectRepo: (repo: RepoItem) => void;
   isLoading: boolean;
+  onOpenTokenModal?: () => void;
+  tokenStatus?: string;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -14,6 +16,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   selectedRepo,
   onSelectRepo,
   isLoading,
+  onOpenTokenModal,
+  tokenStatus,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'modified' | 'ahead' | 'conflict'>('all');
@@ -246,8 +250,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
 
-      {/* Sidebar Footer with Path Mapping info */}
-      <div className="p-3 border-t border-slate-800/80 bg-slate-950/90 text-[11px] text-slate-500 font-mono space-y-1">
+      {/* Sidebar Footer with Token Config & Path Mapping info */}
+      <div className="p-3 border-t border-slate-800/80 bg-slate-950/90 text-[11px] text-slate-500 font-mono space-y-2">
+        {onOpenTokenModal && (
+          <button
+            onClick={onOpenTokenModal}
+            className="w-full flex items-center justify-between p-2 rounded bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 text-xs text-slate-200 transition-colors shadow-sm"
+            title="Configure GitHub API Token"
+          >
+            <div className="flex items-center gap-2">
+              <Key className="w-3.5 h-3.5 text-amber-400" />
+              <span className="font-semibold text-slate-200">GitHub API / Token</span>
+            </div>
+            <span
+              className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-medium ${
+                tokenStatus === 'valid'
+                  ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                  : tokenStatus === 'invalid'
+                  ? 'bg-rose-950 text-rose-400 border border-rose-800'
+                  : 'bg-amber-950 text-amber-400 border border-amber-800'
+              }`}
+            >
+              {tokenStatus === 'valid' ? 'Active' : tokenStatus === 'invalid' ? '401 Error' : 'Set Token'}
+            </span>
+          </button>
+        )}
         <div className="flex justify-between items-center text-slate-400">
           <span>GestaltCE</span>
           <span>c:\git</span>
