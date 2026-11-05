@@ -1,4 +1,7 @@
-# GitStudio Desktop Launcher for PowerShell
+param(
+    [int]$Port = 8888
+)
+
 Write-Host "==============================================================" -ForegroundColor Cyan
 Write-Host "                GitStudio Desktop Launcher                    " -ForegroundColor Cyan
 Write-Host "==============================================================" -ForegroundColor Cyan
@@ -6,7 +9,7 @@ Write-Host "Workspaces:"
 Write-Host "  - GestaltCE:             c:\git" -ForegroundColor DarkGray
 Write-Host "  - Tribernachi-Foundation: c:\git\trib" -ForegroundColor DarkGray
 Write-Host "  - rickpeters112233:      c:\git\rick" -ForegroundColor DarkGray
-Write-Host "Target Port: 8080 (bypassing 3000 and 7080)" -ForegroundColor Green
+Write-Host "Target Port: $Port (clean, conflict-free port)" -ForegroundColor Green
 Write-Host "==============================================================" -ForegroundColor Cyan
 
 # Check Node.js
@@ -25,12 +28,12 @@ if (-not (Test-Path "node_modules")) {
     Write-Host "[1/3] Dependencies verified." -ForegroundColor Green
 }
 
-# Open browser to Port 8080
-Write-Host "[2/3] Opening browser at http://localhost:8080..." -ForegroundColor Yellow
-Start-Process "http://localhost:8080"
+# Open browser to configured Port
+Write-Host "[2/3] Opening browser at http://localhost:$Port..." -ForegroundColor Yellow
+Start-Process "http://localhost:$Port"
 
 # Start server
-Write-Host "[3/3] Starting GitStudio server on Port 8080..." -ForegroundColor Green
+Write-Host "[3/3] Starting GitStudio server on Port $Port..." -ForegroundColor Green
 Write-Host "(Press Ctrl+C to stop the server at any time)" -ForegroundColor DarkGray
 Write-Host ""
-npm run dev:8080
+npm run dev -- --port $Port

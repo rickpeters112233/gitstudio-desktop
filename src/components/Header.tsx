@@ -36,7 +36,7 @@ export const Header: React.FC<HeaderProps> = ({
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'gitstudio-desktop.zip';
+      a.download = 'gitstudio-desktop_v2.5.1.zip';
       document.body.appendChild(a);
       a.click();
       setTimeout(() => {

@@ -11,7 +11,10 @@ echo   - GestaltCE:             c:\git
 echo   - Tribernachi-Foundation: c:\git\trib
 echo   - rickpeters112233:      c:\git\rick
 echo.
-echo Target Port: 8080 (bypassing 3000 and 7080)
+set PORT=%1
+if "%PORT%"=="" set PORT=8888
+
+echo Target Port: %PORT% (clean, conflict-free desktop port)
 echo ==============================================================
 echo.
 
@@ -52,18 +55,18 @@ if not exist ".git\" (
     echo [*] Git tracking enabled! 'git pull origin main' will now work directly in this folder.
 )
 
-:: Wait 2 seconds and open browser to Port 8080
-echo [2/3] Opening default browser to http://localhost:8080...
-start "" "http://localhost:8080"
+:: Wait 2 seconds and open browser to configured Port
+echo [2/3] Opening default browser to http://localhost:%PORT%...
+start "" "http://localhost:%PORT%"
 
-:: Start the application server on Port 8080
-echo [3/3] Starting GitStudio Desktop server on Port 8080...
+:: Start the application server on configured Port
+echo [3/3] Starting GitStudio Desktop server on Port %PORT%...
 echo.
 echo (Press Ctrl+C to stop the server at any time)
 echo ==============================================================
 echo.
 
-call npm run dev:8080
+call npm run dev -- --port %PORT%
 
 if %errorlevel% neq 0 (
     echo.

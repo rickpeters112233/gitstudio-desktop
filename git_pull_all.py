@@ -1,11 +1,12 @@
 # =============================================================================
 # Copyright (c) 2026. All rights reserved.
-# Git Pull All Repos - v0.1.0
-# Pulls the latest changes for all git repositories found in a root folder.
-# If a repo has uncommitted changes, it stashes them, pulls, then restores.
-# If the current branch is gone from remote, switches to default branch first.
-# Clones any new repos from GitHub org/user that are not yet in REPOS_ROOT.
-# Saves an HTML summary report of the results.
+# Git Pull All Repos - v0.2.0
+# Pulls the latest changes for all git repositories across workspaces:
+#   - C:\git               (GestaltCE)
+#   - C:\git\trib          (Tribernachi-Foundation)
+#   - C:\git\rick          (rickpeters112233)
+# Uses 5-step robust pipeline: fetch --prune, dead branch resolution,
+# auto-stash dirty files, pull origin <branch>, and stash restore.
 # =============================================================================
 
 import os
@@ -14,7 +15,7 @@ import subprocess
 import datetime
 from pathlib import Path
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0  # subprocess.CREATE_NO_WINDOW
 
@@ -307,30 +308,86 @@ def sync_new_repos(root: Path) -> list:
     return cloned_results
 
 
-# =============================================================================
-# MAIN COLLECTION
-# =============================================================================
+# Workspaces Configuration for Desktop Synchronizer
+WORKSPACES = [
+    {
+        "scope": "gestaltce",
+        "name": "GestaltCE",
+        "root": Path(r"C:\git"),
+        "owner": "GestaltCE",
+        "skip": {"trib", "rick", "reports", "gitstudio", "node_modules"},
+    },
+    {
+        "scope": "trib",
+        "name": "Tribernachi-Foundation",
+        "root": Path(r"C:\git\trib"),
+        "owner": "Tribernachi-Foundation",
+        "skip": {"reports", "node_modules"},
+    },
+    {
+        "scope": "rick",
+        "name": "rickpeters112233",
+        "root": Path(r"C:\git\rick"),
+        "owner": "rickpeters112233",
+        "skip": {"reports", "node_modules"},
+    },
+]
 
-def pull_all(root: Path) -> list:
+
+def pull_workspace(ws: dict) -> list:
+    name = ws["name"]
+    root = ws["root"]
+    owner = ws["owner"]
+    skip = ws["skip"]
+
+    print(f"\n>> Synchronizing Workspace: {name} ({root})")
+
     if not root.exists():
-        root.mkdir(parents=True, exist_ok=True)
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            print(f"   [NOTICE] Could not create {root}: {e}")
+            return []
 
     cloned = []
-    if CLONE_NEW_REPOS:
-        cloned = sync_new_repos(root)
+    if CLONE_NEW_REPOS and GITHUB_TOKEN:
+        try:
+            cloned = sync_new_repos(root)
+        except Exception as e:
+            print(f"   [NOTICE] New repo sync note: {e}")
 
-    dirs = sorted([d for d in root.iterdir() if d.is_dir() and is_git_repo(d)])
-    if not dirs:
-        print(f"  No existing git repositories found in {root} yet.")
-        return cloned
+    try:
+        dirs = sorted([
+            d for d in root.iterdir()
+            if d.is_dir() and d.name.lower() not in skip and is_git_repo(d)
+        ])
+    except Exception:
+        dirs = []
 
-    print(f"  Found {len(dirs)} git repos in {root}\n")
+    print(f"   Found {len(dirs)} local git repos in {root}\n")
 
     results = []
     for d in dirs:
-        results.append(pull_repo(d))
+        res = pull_repo(d)
+        res["workspace"] = name
+        results.append(res)
+
+    for c in cloned:
+        c["workspace"] = name
 
     return cloned + results
+
+
+def pull_all(scope: str = "all") -> list:
+    all_results = []
+    selected = WORKSPACES if scope == "all" else [w for w in WORKSPACES if w["scope"] == scope or w["name"].lower() == scope.lower()]
+    if not selected:
+        selected = WORKSPACES
+
+    for ws in selected:
+        all_results.extend(pull_workspace(ws))
+
+    return all_results
 
 
 # =============================================================================
@@ -352,7 +409,7 @@ def status_badge(status: str) -> str:
     return f'<span class="badge" style="background:{color}">{label}</span>'
 
 
-def render_html(results: list, root: str) -> str:
+def render_html(results: list, root_desc: str) -> str:
     gen_time   = datetime.datetime.now().strftime("%b %d, %Y  %H:%M")
     total      = len(results)
     updated    = sum(1 for r in results if r["status"] == "updated")
@@ -368,9 +425,10 @@ def render_html(results: list, root: str) -> str:
         stash_icon  = ' <span style="color:#e36209" title="Changes were stashed and restored">⚑ stashed</span>' if r["stashed"] else ""
         switch_icon = ' <span style="color:#79c0ff" title="Switched from dead branch">⇄ switched</span>' if r.get("switched") else ""
         clone_icon  = ' <span style="color:#6f42c1" title="Newly cloned">★ new</span>' if r.get("cloned") else ""
+        ws_label    = r.get("workspace", "Core")
         rows += f"""
         <tr>
-          <td><strong>{r['name']}</strong>{stash_icon}{switch_icon}{clone_icon}</td>
+          <td><strong>{r['name']}</strong> <span style="color:#64748b;font-size:0.75rem;">({ws_label})</span>{stash_icon}{switch_icon}{clone_icon}</td>
           <td class="mono" style="color:#8b949e">{r['branch']}</td>
           <td>{status_badge(r['status'])}</td>
           <td style="font-size:0.8rem;color:#8b949e">{msgs}</td>
@@ -416,8 +474,8 @@ def render_html(results: list, root: str) -> str:
 </head>
 <body>
 <header>
-  <h1>Git Pull All — <span>{GITHUB_OWNER}</span></h1>
-  <p>Root: {root} &nbsp;|&nbsp; Run at: {gen_time}</p>
+  <h1>Git Pull All — <span>{root_desc}</span></h1>
+  <p>Workspaces: C:\git, C:\git\trib, C:\git\rick &nbsp;|&nbsp; Run at: {gen_time}</p>
 </header>
 <div class="totals">
   <div class="stat-card"><div class="num">{total}</div><div class="label">Repos</div></div>
@@ -434,7 +492,7 @@ def render_html(results: list, root: str) -> str:
   <tbody>{rows}</tbody>
 </table>
 </div>
-<footer>Git Pull All &copy; 2026 &nbsp;|&nbsp; Root: {root}</footer>
+<footer>Git Pull All &copy; 2026 &nbsp;|&nbsp; Multi-Workspace Desktop Sync</footer>
 </body>
 </html>"""
 
@@ -444,22 +502,26 @@ def render_html(results: list, root: str) -> str:
 # =============================================================================
 
 def main():
-    root = Path(REPOS_ROOT)
+    scope = sys.argv[1].lower() if len(sys.argv) > 1 else "all"
 
     print(f"\n{'='*60}")
     print(f"  Git Pull All Repos - v{__version__}")
-    print(f"  Root  : {root}")
-    print(f"  Owner : {GITHUB_OWNER}")
+    print(f"  Scope : {scope.upper()}")
+    print(f"  Target Workspaces: C:\\git, C:\\git\\trib, C:\\git\\rick")
     print(f"{'='*60}\n")
 
-    results = pull_all(root)
+    results = pull_all(scope)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    html     = render_html(results, str(root))
+    html     = render_html(results, f"All Workspaces ({scope.upper()})")
     date_str = datetime.datetime.now().strftime("%Y-%m-%d_%H%M")
     out_file = OUTPUT_DIR / f"git_pull_all_{date_str}.html"
-    out_file.write_text(html, encoding="utf-8")
+    try:
+        out_file.write_text(html, encoding="utf-8")
+        report_saved_msg = str(out_file)
+    except Exception as e:
+        report_saved_msg = f"Notice: {e}"
 
     updated    = sum(1 for r in results if r["status"] == "updated")
     up_to_date = sum(1 for r in results if r["status"] == "up_to_date")
@@ -474,9 +536,10 @@ def main():
     print(f"  Cloned new     : {cloned}")
     print(f"  Switched branch: {switched}")
     print(f"  Failed         : {failed}")
-    print(f"  Report saved   : {out_file}")
+    print(f"  Report saved   : {report_saved_msg}")
     print()
 
 
 if __name__ == "__main__":
     main()
+

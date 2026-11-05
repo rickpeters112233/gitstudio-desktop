@@ -81,7 +81,7 @@ export const RunGuideModal: React.FC<RunGuideModalProps> = ({ isOpen, onClose })
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = 'gitstudio-desktop.zip';
+                    a.download = 'gitstudio-desktop_v2.5.1.zip';
                     document.body.appendChild(a);
                     a.click();
                     setTimeout(() => {
@@ -95,7 +95,7 @@ export const RunGuideModal: React.FC<RunGuideModalProps> = ({ isOpen, onClose })
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition-colors shadow-sm"
               >
                 <Download className="w-4 h-4" />
-                <span>Download gitstudio-desktop.zip (73 KB)</span>
+                <span>Download gitstudio-desktop_v2.5.1.zip</span>
               </button>
             </div>
           </div>

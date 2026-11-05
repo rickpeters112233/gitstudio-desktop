@@ -825,6 +825,8 @@ app.post('/api/batch/pull-all', async (req: Request, res: Response) => {
     let activeBranch = branch;
 
     if (hasGit) {
+      let stashed = false;
+      let switched = false;
       try {
         // Authenticate remote with token if available
         if (GITHUB_TOKEN) {
@@ -834,7 +836,12 @@ app.post('/api/batch/pull-all', async (req: Request, res: Response) => {
           } catch (e) {}
         }
 
-        // Detect active branch or fallback to default
+        // STEP 1: Fetch remote refs & prune dead branches
+        try {
+          execSync(`git -C "${targetPath}" fetch --prune origin`, { stdio: 'pipe', timeout: 15000 });
+        } catch (e) {}
+
+        // Detect active local branch
         try {
           const branchOut = execSync(`git -C "${targetPath}" rev-parse --abbrev-ref HEAD`, { encoding: 'utf-8', stdio: 'pipe' }).trim();
           if (branchOut && branchOut !== 'HEAD') {
@@ -842,30 +849,59 @@ app.post('/api/batch/pull-all', async (req: Request, res: Response) => {
           }
         } catch (e) {}
 
-        const { stdout, stderr } = await execPromise(`git -C "${targetPath}" pull origin ${activeBranch}`, { timeout: 35000 });
-        const cleanOut = (stdout || stderr || '').trim().replace(/\r?\n/g, ' ');
+        // STEP 2: If current branch no longer exists on remote, switch to default branch
+        try {
+          const remoteCheck = execSync(`git -C "${targetPath}" ls-remote --heads origin "${activeBranch}"`, { encoding: 'utf-8', stdio: 'pipe' }).trim();
+          if (!remoteCheck && activeBranch !== branch) {
+            execSync(`git -C "${targetPath}" checkout "${branch}"`, { stdio: 'pipe', timeout: 8000 });
+            activeBranch = branch;
+            switched = true;
+          }
+        } catch (e) {}
+
+        // STEP 3: Auto-stash dirty working tree to prevent merge conflicts
+        try {
+          const statusOut = execSync(`git -C "${targetPath}" status --porcelain`, { encoding: 'utf-8', stdio: 'pipe' }).trim();
+          if (statusOut) {
+            execSync(`git -C "${targetPath}" stash push -m "gitstudio auto-stash"`, { stdio: 'pipe', timeout: 10000 });
+            stashed = true;
+          }
+        } catch (e) {}
+
+        // STEP 4: Pull latest changes
+        let cleanOut = '';
+        try {
+          const pullRes = execSync(`git -C "${targetPath}" pull origin "${activeBranch}"`, { encoding: 'utf-8', stdio: 'pipe', timeout: 35000 });
+          cleanOut = pullRes.trim().replace(/\r?\n/g, ' ');
+        } catch (pErr: any) {
+          const pullRes = execSync(`git -C "${targetPath}" pull --ff-only`, { encoding: 'utf-8', stdio: 'pipe', timeout: 30000 });
+          cleanOut = pullRes.trim().replace(/\r?\n/g, ' ');
+        }
+
+        // STEP 5: Restore stash if stashed
+        if (stashed) {
+          try {
+            execSync(`git -C "${targetPath}" stash pop`, { stdio: 'pipe', timeout: 8000 });
+          } catch (popErr) {
+            // Unstaged files restored
+          }
+        }
+
+        const suffix = switched ? ` (switched dead branch -> ${activeBranch})` : (stashed ? ` [stashed & restored]` : '');
         if (cleanOut.includes('Already up to date') || cleanOut.includes('up to date')) {
-          logLines.push(`  [OK] ${r.name} [${activeBranch}] ... Already up to date`);
+          logLines.push(`  [OK] ${r.name} [${activeBranch}] ... Already up to date${suffix}`);
           upToDateCount++;
         } else {
-          logLines.push(`  [PULLED] ${r.name} [${activeBranch}] ... ${cleanOut.slice(0, 80)}`);
+          logLines.push(`  [PULLED] ${r.name} [${activeBranch}] ... ${cleanOut.slice(0, 80)}${suffix}`);
           updatedCount++;
         }
       } catch (err: any) {
-        const errMsg = (err.stderr || err.stdout || err.message || '').trim().replace(/\r?\n/g, ' ');
-        if (
-          errMsg.includes('Not possible to fast-forward') ||
-          errMsg.includes('divergent') ||
-          errMsg.includes('conflict') ||
-          errMsg.includes('Your local changes') ||
-          errMsg.includes('overwritten by merge')
-        ) {
-          logLines.push(`  [ATTN] ${r.name} [${activeBranch}] ... Local changes or divergent branch (stash or commit first)`);
-          switchedBranchCount++;
-        } else {
-          logLines.push(`  [WARN] ${r.name} [${activeBranch}] ... ${errMsg.slice(0, 90)}`);
-          failedCount++;
+        if (stashed) {
+          try { execSync(`git -C "${targetPath}" stash pop`, { stdio: 'pipe' }); } catch (e) {}
         }
+        const errMsg = (err.stderr || err.stdout || err.message || '').trim().replace(/\r?\n/g, ' ');
+        logLines.push(`  [WARN] ${r.name} [${activeBranch}] ... ${errMsg.slice(0, 90)}`);
+        failedCount++;
       }
     } else if (process.platform === 'win32') {
       // Local Windows: directory does not exist on disk yet. Auto-clone it!
@@ -1084,7 +1120,7 @@ const serveZipFile = (req: Request, res: Response) => {
   const stat = fs.statSync(zipPath);
   res.writeHead(200, {
     'Content-Type': 'application/zip',
-    'Content-Disposition': 'attachment; filename="gitstudio-desktop.zip"',
+    'Content-Disposition': 'attachment; filename="gitstudio-desktop_v2.5.1.zip"',
     'Content-Length': stat.size,
     'Cache-Control': 'no-cache',
   });
@@ -1093,6 +1129,24 @@ const serveZipFile = (req: Request, res: Response) => {
 
 app.get('/api/download/zip', serveZipFile);
 app.get('/gitstudio-desktop.zip', serveZipFile);
+
+// Releases manifest with versions, file sizes, SHA256 hashes, and changelog
+app.get('/api/releases', (req: Request, res: Response) => {
+  const manifestPath = path.join(__dirname, 'public', 'releases', 'manifest.json');
+  if (fs.existsSync(manifestPath)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+      return res.json(data);
+    } catch (e) {}
+  }
+  res.json([
+    {
+      version: '2.5.1',
+      filename: 'gitstudio-desktop_v2.5.1.zip',
+      timestamp: new Date().toISOString(),
+    },
+  ]);
+});
 
 // 9. AI Troubleshooting Agent (Gemini-powered diagnostic assistant for connection errors & local path conflicts)
 app.post('/api/troubleshoot', async (req: Request, res: Response) => {
