@@ -1,0 +1,48 @@
+=====================================================================
+ GIT TOOLS GUI  —  Pull All + Daily Report, side by side
+=====================================================================
+
+INSTALL LOCATION (exact):
+
+  C:\tools\gittools\
+    git_tools_gui.py         the GUI (left: Pull, right: Report)
+    git_pull_all.py          pull engine
+    github_daily_report.py   report engine
+    RUN_GUI.bat              run WITHOUT building an exe
+    BUILD_EXE.bat            build GitToolsGUI.exe (optional, run once)
+    INSTRUCTIONS.txt         this file
+    PROJECT_INSTRUCTIONS.md  mandatory rules
+    reports\                 created automatically - all HTML reports land here
+
+---------------------------------------------------------------------
+ OPTION A — RUN WITHOUT AN EXE
+---------------------------------------------------------------------
+  1. Double-click RUN_GUI.bat
+     (first run installs the 'requests' library automatically)
+
+---------------------------------------------------------------------
+ OPTION B — BUILD THE EXE (once)
+---------------------------------------------------------------------
+  1. Double-click BUILD_EXE.bat
+  2. Wait for "Done!" - GitToolsGUI.exe appears in this folder
+  3. From then on just double-click GitToolsGUI.exe
+
+  NOTE: If pyinstaller was just installed for the first time,
+  close the window and run BUILD_EXE.bat once more.
+
+---------------------------------------------------------------------
+ USING THE GUI
+---------------------------------------------------------------------
+  LEFT PANEL  - Git Pull All
+    Click "Run Git Pull All" - watch every repo pull live in the
+    console below. HTML summary saved to reports\ when finished.
+
+  RIGHT PANEL - GitHub Daily Report
+    Pick daily / weekly / monthly, click "Run Report" - watch every
+    repo scanned live. HTML report saved to reports\.
+
+  The two panels run independently - you can run both at once.
+  "Reports" button on either panel opens the reports\ folder.
+
+  API token and GestaltCE org are already baked in - nothing to enter.
+=====================================================================
