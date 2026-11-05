@@ -91,8 +91,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
           branch: branchParam || repo.currentBranch,
         }),
       });
-      const data = await res.json();
-      setActionLog({ action, output: data.output });
+
+      let data: any = {};
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(`Server returned HTTP ${res.status}: ${text.slice(0, 120)}`);
+      }
+
+      setActionLog({ action, output: data.output || (data.success ? 'Action succeeded.' : data.error || 'Done.') });
       onRepoUpdated();
     } catch (err: any) {
       setActionLog({ action, output: `Error executing git ${action}: ${err.message}` });
@@ -116,13 +125,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
           branch: repo.currentBranch,
         }),
       });
-      const data = await res.json();
+
+      let data: any = {};
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(`Server returned HTTP ${res.status}: ${text.slice(0, 120)}`);
+      }
+
       setCommitMessage('');
 
       if (andPush) {
         await handleGitAction('push');
       } else {
-        setActionLog({ action: 'commit', output: data.output });
+        setActionLog({ action: 'commit', output: data.output || 'Commit recorded.' });
         onRepoUpdated();
       }
     } catch (err: any) {

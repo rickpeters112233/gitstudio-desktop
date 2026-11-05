@@ -55,9 +55,9 @@ if not exist ".git\" (
     echo [*] Git tracking enabled! 'git pull origin main' will now work directly in this folder.
 )
 
-:: Wait 2 seconds and open browser to configured Port
-echo [2/3] Opening default browser to http://localhost:%PORT%...
-start "" "http://localhost:%PORT%"
+:: Open browser 2 seconds after server starts to ensure Node is listening
+echo [2/3] Scheduling browser launch to http://localhost:%PORT%...
+start /b cmd /c "timeout /t 2 /nobreak >nul && start http://localhost:%PORT%"
 
 :: Start the application server on configured Port
 echo [3/3] Starting GitStudio Desktop server on Port %PORT%...

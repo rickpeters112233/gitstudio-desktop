@@ -428,8 +428,178 @@ app.get('/api/repos/:owner/:repo/commits', async (req: Request, res: Response) =
   }
 });
 
+// Shared 5-Step Robust Pull Engine (asynchronous & non-blocking)
+interface PullResult {
+  success: boolean;
+  status: 'up_to_date' | 'updated' | 'pull_failed' | 'cloned' | 'clone_failed';
+  output: string;
+  logLine: string;
+  branch: string;
+  stashed: boolean;
+  switched: boolean;
+}
+
+async function executeFiveStepPull(
+  targetPath: string,
+  repoFullName: string,
+  targetBranch: string,
+  repoName: string
+): Promise<PullResult> {
+  const normalizedDest = process.platform === 'win32'
+    ? path.win32.normalize(targetPath)
+    : targetPath;
+
+  const hasGit = fs.existsSync(normalizedDest) && fs.existsSync(path.join(normalizedDest, '.git'));
+  const env = { ...process.env, GIT_TERMINAL_PROMPT: '0' };
+
+  if (hasGit) {
+    let activeBranch = targetBranch;
+    let stashed = false;
+    let switched = false;
+
+    try {
+      // Step 1: Set remote auth if token exists
+      if (GITHUB_TOKEN) {
+        const authRemote = `https://${GITHUB_TOKEN}@github.com/${repoFullName}.git`;
+        try {
+          await execPromise(`git -C "${normalizedDest}" remote set-url origin "${authRemote}"`, { timeout: 8000, env });
+        } catch (e) {}
+      }
+
+      // Step 2: Fetch remote refs & prune
+      try {
+        await execPromise(`git -C "${normalizedDest}" fetch --prune origin`, { timeout: 15000, env });
+      } catch (e) {}
+
+      // Detect active branch
+      try {
+        const { stdout: branchOut } = await execPromise(`git -C "${normalizedDest}" rev-parse --abbrev-ref HEAD`, { timeout: 5000, env });
+        const trimmed = branchOut.trim();
+        if (trimmed && trimmed !== 'HEAD') {
+          activeBranch = trimmed;
+        }
+      } catch (e) {}
+
+      // Step 3: Check if active branch exists on remote, if not fallback to default branch
+      try {
+        const { stdout: remoteCheck } = await execPromise(`git -C "${normalizedDest}" ls-remote --heads origin "${activeBranch}"`, { timeout: 8000, env });
+        if (!remoteCheck.trim() && activeBranch !== targetBranch) {
+          await execPromise(`git -C "${normalizedDest}" checkout "${targetBranch}"`, { timeout: 8000, env });
+          activeBranch = targetBranch;
+          switched = true;
+        }
+      } catch (e) {}
+
+      // Step 4: Stash dirty tree
+      try {
+        const { stdout: statusOut } = await execPromise(`git -C "${normalizedDest}" status --porcelain`, { timeout: 5000, env });
+        if (statusOut.trim()) {
+          await execPromise(`git -C "${normalizedDest}" stash push -m "gitstudio auto-stash"`, { timeout: 8000, env });
+          stashed = true;
+        }
+      } catch (e) {}
+
+      // Step 5: Pull
+      let cleanOut = '';
+      try {
+        const { stdout: pullOut } = await execPromise(`git -C "${normalizedDest}" pull origin "${activeBranch}"`, { timeout: 20000, env });
+        cleanOut = pullOut.trim().replace(/\r?\n/g, ' ');
+      } catch (pErr: any) {
+        try {
+          const { stdout: ffOut } = await execPromise(`git -C "${normalizedDest}" pull --ff-only`, { timeout: 15000, env });
+          cleanOut = ffOut.trim().replace(/\r?\n/g, ' ');
+        } catch (ffErr: any) {
+          const errDetail = (ffErr.stderr || ffErr.stdout || ffErr.message || '').trim().replace(/\r?\n/g, ' ');
+          throw new Error(errDetail || 'Pull failed');
+        }
+      }
+
+      // Restore stash
+      if (stashed) {
+        try {
+          await execPromise(`git -C "${normalizedDest}" stash pop`, { timeout: 8000, env });
+        } catch (popErr) {}
+      }
+
+      const suffix = switched ? ` (switched dead branch -> ${activeBranch})` : (stashed ? ` [stashed & restored]` : '');
+      const isUpToDate = cleanOut.includes('Already up to date') || cleanOut.includes('up to date');
+      const status = isUpToDate ? 'up_to_date' : 'updated';
+      const logLine = isUpToDate
+        ? `  [OK] ${repoName} [${activeBranch}] ... Already up to date${suffix}`
+        : `  [PULLED] ${repoName} [${activeBranch}] ... ${cleanOut.slice(0, 80)}${suffix}`;
+
+      return {
+        success: true,
+        status,
+        output: `$ git -C "${normalizedDest}" pull origin "${activeBranch}"\n${cleanOut}${suffix}`,
+        logLine,
+        branch: activeBranch,
+        stashed,
+        switched,
+      };
+    } catch (err: any) {
+      if (stashed) {
+        try { await execPromise(`git -C "${normalizedDest}" stash pop`, { timeout: 5000, env }); } catch (e) {}
+      }
+      const errMsg = (err.stderr || err.stdout || err.message || '').trim();
+      return {
+        success: false,
+        status: 'pull_failed',
+        output: `$ git -C "${normalizedDest}" pull failed:\n${errMsg}`,
+        logLine: `  [WARN] ${repoName} [${activeBranch}] ... ${errMsg.replace(/\r?\n/g, ' ').slice(0, 90)}`,
+        branch: activeBranch,
+        stashed,
+        switched,
+      };
+    }
+  } else if (process.platform === 'win32') {
+    // Repo does not exist on disk yet. Try clone if on Windows
+    try {
+      const parentDir = path.dirname(normalizedDest);
+      if (!fs.existsSync(parentDir)) {
+        fs.mkdirSync(parentDir, { recursive: true });
+      }
+      const cloneUrl = GITHUB_TOKEN
+        ? `https://${GITHUB_TOKEN}@github.com/${repoFullName}.git`
+        : `https://github.com/${repoFullName}.git`;
+      await execPromise(`git clone --quiet "${cloneUrl}" "${normalizedDest}"`, { timeout: 45000, env });
+      return {
+        success: true,
+        status: 'cloned',
+        output: `$ git clone https://github.com/${repoFullName}.git "${normalizedDest}"\nCloned successfully into ${normalizedDest}`,
+        logLine: `  [CLONED] ${repoName} [${targetBranch}] ... Successfully cloned into ${normalizedDest}`,
+        branch: targetBranch,
+        stashed: false,
+        switched: false,
+      };
+    } catch (cloneErr: any) {
+      const cloneMsg = (cloneErr.stderr || cloneErr.stdout || cloneErr.message || '').trim();
+      return {
+        success: false,
+        status: 'clone_failed',
+        output: `$ git clone failed for ${repoFullName}:\n${cloneMsg}`,
+        logLine: `  [WARN] ${repoName} ... Clone failed: ${cloneMsg.replace(/\r?\n/g, ' ').slice(0, 80)}`,
+        branch: targetBranch,
+        stashed: false,
+        switched: false,
+      };
+    }
+  } else {
+    // Cloud preview / remote sync
+    return {
+      success: true,
+      status: 'up_to_date',
+      output: `Synced with GitHub (${repoFullName}) on branch ${targetBranch}.`,
+      logLine: `  [OK] ${repoName} [${targetBranch}] ... Synced with GitHub (${repoFullName})`,
+      branch: targetBranch,
+      stashed: false,
+      switched: false,
+    };
+  }
+}
+
 // 4. Git Action Handler (Push, Pull, Archive, Stash, Checkout, Commit)
-app.post('/api/git/action', (req: Request, res: Response) => {
+app.post('/api/git/action', async (req: Request, res: Response) => {
   const { action, repoFullName, branch, commitMessage, files } = req.body;
   const repo = repoCache.find((r) => r.fullName === repoFullName);
   const repoName = repo ? repo.name : repoFullName?.split('/')[1] || 'repo';
@@ -440,7 +610,13 @@ app.post('/api/git/action', (req: Request, res: Response) => {
 
   switch (action) {
     case 'clone': {
-      const localDest = repo ? repo.localPath : `c:/git/${repoName}`;
+      const localDest = repo
+        ? repo.localPath
+        : (repoFullName?.startsWith('Tribernachi-Foundation')
+            ? `c:/git/trib/${repoName}`
+            : (repoFullName?.startsWith('rickpeters112233')
+                ? `c:/git/rick/${repoName}`
+                : `c:/git/${repoName}`));
       const normalizedDest = process.platform === 'win32'
         ? localDest.replace(/\//g, '\\')
         : localDest;
@@ -460,10 +636,9 @@ app.post('/api/git/action', (req: Request, res: Response) => {
 
       console.log(`[REAL CLONE] Executing: git clone ${cloneUrl.replace(/ghp_[^@]+/, 'TOKEN')} "${normalizedDest}"`);
       try {
-        const execOut = execSync(`git clone ${cloneUrl} "${normalizedDest}"`, {
-          encoding: 'utf-8',
-          stdio: 'pipe',
+        const { stdout: execOut } = await execPromise(`git clone "${cloneUrl}" "${normalizedDest}"`, {
           timeout: 60000,
+          env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
         });
         output = [
           `$ git clone https://github.com/${repoFullName}.git "${normalizedDest}"`,
@@ -495,43 +670,20 @@ app.post('/api/git/action', (req: Request, res: Response) => {
     }
 
     case 'pull': {
-      const localDest = repo ? repo.localPath : `c:/git/${repoName}`;
-      const normalizedDest = process.platform === 'win32'
-        ? localDest.replace(/\//g, '\\')
-        : localDest;
+      const defaultDest = repo
+        ? repo.localPath
+        : (repoFullName?.startsWith('Tribernachi-Foundation')
+            ? `c:/git/trib/${repoName}`
+            : (repoFullName?.startsWith('rickpeters112233')
+                ? `c:/git/rick/${repoName}`
+                : `c:/git/${repoName}`));
 
-      if (fs.existsSync(normalizedDest)) {
-        try {
-          if (GITHUB_TOKEN) {
-            const authRemote = `https://${GITHUB_TOKEN}@github.com/${repoFullName}.git`;
-            try {
-              execSync(`git -C "${normalizedDest}" remote set-url origin "${authRemote}"`, { stdio: 'pipe', timeout: 5000 });
-            } catch (e) {}
-          }
-          const res = execSync(`git -C "${normalizedDest}" pull`, {
-            encoding: 'utf-8',
-            stdio: 'pipe',
-            timeout: 35000,
-          });
-          output = [
-            `$ git -C "${normalizedDest}" pull`,
-            res.trim() || 'Already up to date.',
-          ].join('\n');
-          success = true;
-        } catch (err: any) {
-          output = `git pull failed:\n${(err.stderr || err.stdout || err.message).toString()}`;
-          success = false;
-        }
-      } else {
-        output = [
-          `$ git fetch origin ${targetBranch}`,
-          `Notice: ${normalizedDest} is not yet cloned on your hard drive.`,
-          `Please click 'Clone to Desktop' first to download the files.`,
-        ].join('\n');
-      }
+      const pullResult = await executeFiveStepPull(defaultDest, repoFullName, targetBranch, repoName);
+      output = pullResult.output;
+      success = pullResult.success;
 
       if (repo) {
-        repo.status = 'up_to_date';
+        repo.status = pullResult.status === 'updated' || pullResult.status === 'up_to_date' ? 'up_to_date' : (pullResult.status === 'pull_failed' ? 'conflict' : 'up_to_date');
         repo.lastSync = new Date().toISOString();
       }
       break;
@@ -788,9 +940,11 @@ function saveReportToDisk(filename: string, content: string): string {
   return primarySavedPath || `C:\\git\\reports\\${filename}`;
 }
 
-// 6. Batch "Git Pull All" Tool (Matching user screenshot)
-app.post('/api/batch/pull-all', async (req: Request, res: Response) => {
-  const { scope = 'all' } = req.body;
+// 6. Batch "Git Pull All" Streaming & Batch Tool (Matching user screenshot)
+async function runBatchPullPipeline(
+  scope: string,
+  onProgress?: (progressData: { name: string; line: string; status: string; current: number; total: number }) => void
+) {
   if (repoCache.length === 0) {
     await syncAllGithubRepos();
   }
@@ -812,7 +966,8 @@ app.post('/api/batch/pull-all', async (req: Request, res: Response) => {
   let switchedBranchCount = 0;
   let failedCount = 0;
 
-  for (const r of filtered) {
+  for (let i = 0; i < filtered.length; i++) {
+    const r = filtered[i];
     const branch = r.defaultBranch || 'main';
     let targetPath = r.localPath;
     if (process.platform === 'win32') {
@@ -821,110 +976,23 @@ app.post('/api/batch/pull-all', async (req: Request, res: Response) => {
       targetPath = process.cwd();
     }
 
-    const hasGit = fs.existsSync(targetPath) && fs.existsSync(path.join(targetPath, '.git'));
-    let activeBranch = branch;
+    const pullResult = await executeFiveStepPull(targetPath, r.fullName, branch, r.name);
+    logLines.push(pullResult.logLine);
 
-    if (hasGit) {
-      let stashed = false;
-      let switched = false;
-      try {
-        // Authenticate remote with token if available
-        if (GITHUB_TOKEN) {
-          const authRemote = `https://${GITHUB_TOKEN}@github.com/${r.fullName}.git`;
-          try {
-            execSync(`git -C "${targetPath}" remote set-url origin "${authRemote}"`, { stdio: 'pipe', timeout: 5000 });
-          } catch (e) {}
-        }
+    if (pullResult.status === 'updated') updatedCount++;
+    else if (pullResult.status === 'up_to_date') upToDateCount++;
+    else if (pullResult.status === 'cloned') clonedNewCount++;
+    else if (pullResult.status === 'pull_failed' || pullResult.status === 'clone_failed') failedCount++;
+    if (pullResult.switched) switchedBranchCount++;
 
-        // STEP 1: Fetch remote refs & prune dead branches
-        try {
-          execSync(`git -C "${targetPath}" fetch --prune origin`, { stdio: 'pipe', timeout: 15000 });
-        } catch (e) {}
-
-        // Detect active local branch
-        try {
-          const branchOut = execSync(`git -C "${targetPath}" rev-parse --abbrev-ref HEAD`, { encoding: 'utf-8', stdio: 'pipe' }).trim();
-          if (branchOut && branchOut !== 'HEAD') {
-            activeBranch = branchOut;
-          }
-        } catch (e) {}
-
-        // STEP 2: If current branch no longer exists on remote, switch to default branch
-        try {
-          const remoteCheck = execSync(`git -C "${targetPath}" ls-remote --heads origin "${activeBranch}"`, { encoding: 'utf-8', stdio: 'pipe' }).trim();
-          if (!remoteCheck && activeBranch !== branch) {
-            execSync(`git -C "${targetPath}" checkout "${branch}"`, { stdio: 'pipe', timeout: 8000 });
-            activeBranch = branch;
-            switched = true;
-          }
-        } catch (e) {}
-
-        // STEP 3: Auto-stash dirty working tree to prevent merge conflicts
-        try {
-          const statusOut = execSync(`git -C "${targetPath}" status --porcelain`, { encoding: 'utf-8', stdio: 'pipe' }).trim();
-          if (statusOut) {
-            execSync(`git -C "${targetPath}" stash push -m "gitstudio auto-stash"`, { stdio: 'pipe', timeout: 10000 });
-            stashed = true;
-          }
-        } catch (e) {}
-
-        // STEP 4: Pull latest changes
-        let cleanOut = '';
-        try {
-          const pullRes = execSync(`git -C "${targetPath}" pull origin "${activeBranch}"`, { encoding: 'utf-8', stdio: 'pipe', timeout: 35000 });
-          cleanOut = pullRes.trim().replace(/\r?\n/g, ' ');
-        } catch (pErr: any) {
-          const pullRes = execSync(`git -C "${targetPath}" pull --ff-only`, { encoding: 'utf-8', stdio: 'pipe', timeout: 30000 });
-          cleanOut = pullRes.trim().replace(/\r?\n/g, ' ');
-        }
-
-        // STEP 5: Restore stash if stashed
-        if (stashed) {
-          try {
-            execSync(`git -C "${targetPath}" stash pop`, { stdio: 'pipe', timeout: 8000 });
-          } catch (popErr) {
-            // Unstaged files restored
-          }
-        }
-
-        const suffix = switched ? ` (switched dead branch -> ${activeBranch})` : (stashed ? ` [stashed & restored]` : '');
-        if (cleanOut.includes('Already up to date') || cleanOut.includes('up to date')) {
-          logLines.push(`  [OK] ${r.name} [${activeBranch}] ... Already up to date${suffix}`);
-          upToDateCount++;
-        } else {
-          logLines.push(`  [PULLED] ${r.name} [${activeBranch}] ... ${cleanOut.slice(0, 80)}${suffix}`);
-          updatedCount++;
-        }
-      } catch (err: any) {
-        if (stashed) {
-          try { execSync(`git -C "${targetPath}" stash pop`, { stdio: 'pipe' }); } catch (e) {}
-        }
-        const errMsg = (err.stderr || err.stdout || err.message || '').trim().replace(/\r?\n/g, ' ');
-        logLines.push(`  [WARN] ${r.name} [${activeBranch}] ... ${errMsg.slice(0, 90)}`);
-        failedCount++;
-      }
-    } else if (process.platform === 'win32') {
-      // Local Windows: directory does not exist on disk yet. Auto-clone it!
-      try {
-        const parentDir = path.dirname(targetPath);
-        if (!fs.existsSync(parentDir)) {
-          fs.mkdirSync(parentDir, { recursive: true });
-        }
-        const cloneUrl = GITHUB_TOKEN
-          ? `https://${GITHUB_TOKEN}@github.com/${r.fullName}.git`
-          : `https://github.com/${r.fullName}.git`;
-        execSync(`git clone --quiet "${cloneUrl}" "${targetPath}"`, { stdio: 'pipe', timeout: 60000 });
-        logLines.push(`  [CLONED] ${r.name} [${branch}] ... Successfully cloned into ${targetPath}`);
-        clonedNewCount++;
-      } catch (cloneErr: any) {
-        const cloneMsg = (cloneErr.stderr || cloneErr.stdout || cloneErr.message || '').trim().replace(/\r?\n/g, ' ');
-        logLines.push(`  [WARN] ${r.name} ... Target folder not found & clone failed: ${cloneMsg.slice(0, 80)}`);
-        failedCount++;
-      }
-    } else {
-      // Cloud preview / remote sync mode
-      logLines.push(`  [OK] ${r.name} [${branch}] ... Synced with GitHub (${r.fullName})`);
-      upToDateCount++;
+    if (onProgress) {
+      onProgress({
+        name: r.name,
+        line: pullResult.logLine,
+        status: pullResult.status,
+        current: i + 1,
+        total: filtered.length,
+      });
     }
   }
 
@@ -1000,10 +1068,83 @@ app.post('/api/batch/pull-all', async (req: Request, res: Response) => {
 
   reportsHistory.unshift(reportItem);
 
-  res.json({
-    success: true,
-    report: reportItem,
-  });
+  return { reportItem, summaryBox, total };
+}
+
+// Real-Time Server-Sent Events (SSE) Streaming endpoint for Git Pull All
+const handlePullStream = async (req: Request, res: Response) => {
+  const scope = (req.query.scope as string) || (req.body && req.body.scope) || 'all';
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+
+  if (repoCache.length === 0) {
+    await syncAllGithubRepos();
+  }
+
+  let filtered = repoCache;
+  if (scope === 'gestaltce') {
+    filtered = repoCache.filter((r) => r.group === 'GestaltCE');
+  } else if (scope === 'trib') {
+    filtered = repoCache.filter((r) => r.group === 'Tribernachi-Foundation');
+  } else if (scope === 'rick') {
+    filtered = repoCache.filter((r) => r.group === 'rickpeters112233');
+  }
+
+  res.write(`data: ${JSON.stringify({
+    type: 'start',
+    message: `Scanning repositories across scope: ${scope.toUpperCase()}...`,
+    total: filtered.length,
+  })}\n\n`);
+
+  try {
+    const { reportItem, summaryBox } = await runBatchPullPipeline(scope, (p) => {
+      res.write(`data: ${JSON.stringify({
+        type: 'progress',
+        name: p.name,
+        line: p.line,
+        status: p.status,
+        current: p.current,
+        total: p.total,
+      })}\n\n`);
+    });
+
+    res.write(`data: ${JSON.stringify({
+      type: 'complete',
+      summary: summaryBox,
+      report: reportItem,
+    })}\n\n`);
+    res.end();
+  } catch (err: any) {
+    res.write(`data: ${JSON.stringify({
+      type: 'error',
+      message: err.message || 'Error executing batch pull pipeline',
+    })}\n\n`);
+    res.end();
+  }
+};
+
+app.get('/api/batch/pull-all/stream', handlePullStream);
+app.post('/api/batch/pull-all/stream', handlePullStream);
+
+// Standard JSON endpoint for batch pull
+app.post('/api/batch/pull-all', async (req: Request, res: Response) => {
+  const { scope = 'all' } = req.body;
+  try {
+    const { reportItem } = await runBatchPullPipeline(scope);
+    res.json({
+      success: true,
+      report: reportItem,
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Error executing batch pull',
+    });
+  }
 });
 
 // 7. Batch "GitHub Daily Report" Tool (Matching user screenshot)
@@ -1241,6 +1382,26 @@ Specific instructions:
       },
     });
   }
+});
+
+// Ensure any unhandled /api/* route ALWAYS returns JSON, never HTML
+app.all('/api/*', (req: Request, res: Response) => {
+  res.status(404).json({
+    success: false,
+    error: `API route not found: ${req.method} ${req.originalUrl}`,
+  });
+});
+
+// Global API error handler ensuring JSON responses
+app.use((err: any, req: Request, res: Response, next: any) => {
+  if (req.path.startsWith('/api')) {
+    console.error('[API Error]', err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || 'Internal server error',
+    });
+  }
+  next(err);
 });
 
 // Vite Middleware Integration for Development / Static Production Serving

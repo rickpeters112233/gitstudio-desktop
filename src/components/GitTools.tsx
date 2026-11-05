@@ -58,22 +58,66 @@ export const GitTools: React.FC<GitToolsProps> = ({
   const [reportLog, setReportLog] = useState<string>('');
   const [lastDailyReport, setLastDailyReport] = useState<GitReport | null>(null);
 
-  // Execute Git Pull All
+  // Execute Git Pull All with real-time SSE streaming
   const runGitPullAll = async () => {
     setIsPullRunning(true);
     setPullStatus('running');
-    setPullLog(`[INITIATING BATCH PULL] Scanning repositories across scope: ${pullScope.toUpperCase()}...\n`);
+    setPullLog(`[INITIATING BATCH PULL] Connecting to batch pull engine (Scope: ${pullScope.toUpperCase()})...\n`);
 
     try {
-      const res = await fetch('/api/batch/pull-all', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scope: pullScope }),
-      });
-      const data = await res.json();
-      if (data.report) {
-        setPullLog(data.report.log);
-        setLastPullReport(data.report);
+      const res = await fetch(`/api/batch/pull-all/stream?scope=${pullScope}`);
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Server returned HTTP ${res.status}: ${errText.slice(0, 100)}`);
+      }
+
+      if (res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const blocks = buffer.split('\n\n');
+          buffer = blocks.pop() || '';
+
+          for (const block of blocks) {
+            const trimmed = block.trim();
+            if (trimmed.startsWith('data: ')) {
+              try {
+                const payload = JSON.parse(trimmed.slice(6));
+                if (payload.type === 'start') {
+                  setPullLog(`[INITIATING BATCH PULL] ${payload.message}\nTotal repositories: ${payload.total}\n\n`);
+                } else if (payload.type === 'progress') {
+                  setPullLog((prev) => prev + payload.line + '\n');
+                } else if (payload.type === 'complete') {
+                  if (payload.report) {
+                    setPullLog(payload.report.log);
+                    setLastPullReport(payload.report);
+                  }
+                } else if (payload.type === 'error') {
+                  setPullLog((prev) => prev + `\n[ERROR]: ${payload.message}\n`);
+                }
+              } catch (e) {
+                // ignore SSE parse chunk
+              }
+            }
+          }
+        }
+      } else {
+        // Fallback for non-streaming environments
+        const fallbackRes = await fetch('/api/batch/pull-all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scope: pullScope }),
+        });
+        const data = await fallbackRes.json();
+        if (data.report) {
+          setPullLog(data.report.log);
+          setLastPullReport(data.report);
+        }
       }
       setPullStatus('done');
     } catch (err: any) {

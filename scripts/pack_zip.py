@@ -4,7 +4,7 @@ import hashlib
 import zipfile
 import datetime
 
-VERSION = "2.5.1"
+VERSION = "2.5.2"
 
 def get_sha256(filepath):
     h = hashlib.sha256()
@@ -94,10 +94,10 @@ def pack():
         "sha256": sha,
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "changelog": [
-            "Upgraded batch pull engine in server.ts with 5-step robust pipeline (fetch --prune, dead-branch resolution, auto-stash, pull origin <branch>, stash-restore)",
-            "Configured clean desktop port 8888 in start-gitstudio.bat and start-gitstudio.ps1",
-            "Added both Web UI and standalone desktop Python tools (git_tools_gui.py, RUN_GUI.bat, BUILD_EXE.bat)",
-            "Saved permanent project instructions and release tracking manifest"
+            "Fixed unexpected token / JSON parse error on desktop with bulletproof JSON error guards on all /api routes",
+            "Added live Server-Sent Events (SSE) streaming for Git Pull All so progress renders line-by-line without freezing",
+            "Converted 5-step pull engine to asynchronous non-blocking execution with GIT_TERMINAL_PROMPT=0",
+            "Added 2-second browser launch delay in start-gitstudio.bat so Node/Express is bound before browser connects"
         ]
     }
 
