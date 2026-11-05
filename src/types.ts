@@ -56,6 +56,8 @@ export interface UserProfile {
   organizations: string[];
   workspaces: { name: string; path: string; group: string }[];
   githubConnected: boolean;
+  tokenStatus?: 'valid' | 'invalid' | 'missing';
+  tokenError?: string;
 }
 
 export interface DiagnosticResult {

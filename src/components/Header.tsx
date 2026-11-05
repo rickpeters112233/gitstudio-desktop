@@ -1,5 +1,5 @@
 import React from 'react';
-import { GitBranch, Terminal, ShieldAlert, Layers, RefreshCw, FolderGit2, CheckCircle2, Download, HelpCircle } from 'lucide-react';
+import { GitBranch, Terminal, ShieldAlert, Layers, RefreshCw, FolderGit2, CheckCircle2, Download, HelpCircle, Key, AlertTriangle } from 'lucide-react';
 import { UserProfile, RepoItem } from '../types';
 
 interface HeaderProps {
@@ -11,6 +11,7 @@ interface HeaderProps {
   isRefreshing: boolean;
   onOpenCloneModal: () => void;
   onOpenRunGuide: () => void;
+  onOpenTokenModal: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -22,6 +23,7 @@ export const Header: React.FC<HeaderProps> = ({
   isRefreshing,
   onOpenCloneModal,
   onOpenRunGuide,
+  onOpenTokenModal,
 }) => {
   const [isDownloading, setIsDownloading] = React.useState(false);
 
@@ -152,6 +154,27 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
 
         <button
+          onClick={onOpenTokenModal}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium border transition-colors whitespace-nowrap shrink-0 ${
+            profile?.tokenStatus === 'valid'
+              ? 'bg-slate-850 hover:bg-slate-800 text-emerald-300 border-slate-700'
+              : profile?.tokenStatus === 'invalid'
+              ? 'bg-rose-950/60 hover:bg-rose-900/60 text-rose-300 border-rose-800/80 animate-pulse'
+              : 'bg-slate-800 hover:bg-slate-700 text-amber-300 border-slate-700'
+          }`}
+          title="Configure GitHub Personal Access Token"
+        >
+          <Key className="w-3.5 h-3.5" />
+          <span>
+            {profile?.tokenStatus === 'valid'
+              ? 'PAT Active'
+              : profile?.tokenStatus === 'invalid'
+              ? 'PAT Invalid (401)'
+              : 'Set Token'}
+          </span>
+        </button>
+
+        <button
           onClick={onOpenCloneModal}
           className="px-3 py-1.5 rounded text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition-colors whitespace-nowrap shrink-0"
         >
@@ -159,7 +182,11 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
 
         {profile && (
-          <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
+          <button
+            onClick={onOpenTokenModal}
+            className="flex items-center gap-2 pl-2 border-l border-slate-800 hover:bg-slate-900/50 p-1 rounded transition-colors text-left"
+            title="Account & Token Settings"
+          >
             <img
               src={profile.avatarUrl}
               alt={profile.username}
@@ -169,11 +196,31 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="text-xs font-medium text-slate-200 leading-tight">
                 {profile.username}
               </span>
-              <span className="text-[10px] text-emerald-400 flex items-center justify-end gap-1 font-mono">
-                <CheckCircle2 className="w-2.5 h-2.5" /> Connected
+              <span
+                className={`text-[10px] flex items-center justify-end gap-1 font-mono ${
+                  profile.tokenStatus === 'valid'
+                    ? 'text-emerald-400'
+                    : profile.tokenStatus === 'invalid'
+                    ? 'text-rose-400 font-semibold'
+                    : 'text-amber-400'
+                }`}
+              >
+                {profile.tokenStatus === 'valid' ? (
+                  <>
+                    <CheckCircle2 className="w-2.5 h-2.5" /> Connected
+                  </>
+                ) : profile.tokenStatus === 'invalid' ? (
+                  <>
+                    <AlertTriangle className="w-2.5 h-2.5" /> Token 401
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-2.5 h-2.5" /> Public Mode
+                  </>
+                )}
               </span>
             </div>
-          </div>
+          </button>
         )}
       </div>
     </header>

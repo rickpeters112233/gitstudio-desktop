@@ -13,6 +13,7 @@ import { Troubleshooter } from './components/Troubleshooter';
 import { ReportsModal } from './components/ReportsModal';
 import { CloneModal } from './components/CloneModal';
 import { RunGuideModal } from './components/RunGuideModal';
+import { TokenModal } from './components/TokenModal';
 import { RepoItem, UserProfile, GitReport } from './types';
 
 export default function App() {
@@ -28,14 +29,19 @@ export default function App() {
   const [activeReportModal, setActiveReportModal] = useState<GitReport | null>(null);
   const [isCloneModalOpen, setIsCloneModalOpen] = useState(false);
   const [isRunGuideOpen, setIsRunGuideOpen] = useState(false);
+  const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
 
-  // Fetch initial profile & repositories
-  useEffect(() => {
-    // 1. Fetch Profile
+  const loadProfile = () => {
     fetch('/api/auth/profile')
       .then((res) => res.json())
       .then((data) => setProfile(data))
       .catch((err) => console.error('Failed to load profile', err));
+  };
+
+  // Fetch initial profile & repositories
+  useEffect(() => {
+    // 1. Fetch Profile
+    loadProfile();
 
     // 2. Fetch Repositories
     loadRepositories(false);
@@ -96,6 +102,7 @@ export default function App() {
         isRefreshing={isLoadingRepos}
         onOpenCloneModal={() => setIsCloneModalOpen(true)}
         onOpenRunGuide={() => setIsRunGuideOpen(true)}
+        onOpenTokenModal={() => setIsTokenModalOpen(true)}
       />
 
       {/* Main Workspace Frame */}
@@ -163,6 +170,15 @@ export default function App() {
       <RunGuideModal
         isOpen={isRunGuideOpen}
         onClose={() => setIsRunGuideOpen(false)}
+      />
+
+      <TokenModal
+        isOpen={isTokenModalOpen}
+        onClose={() => setIsTokenModalOpen(false)}
+        onTokenUpdated={() => {
+          loadProfile();
+          loadRepositories(true);
+        }}
       />
     </div>
   );
