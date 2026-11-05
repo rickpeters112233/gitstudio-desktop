@@ -20,25 +20,61 @@ if (-not (Test-Path $reportsDir)) {
     New-Item -ItemType Directory -Path $reportsDir -Force | Out-Null
 }
 
-# 1. Resolve GitHub Personal Access Token
+# 1. Resolve Script Directory and Files
+$scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
+$envCandidates = @(
+    (Join-Path $scriptDir ".env"),
+    "C:\git\rick\gitstudio-desktop\.env",
+    "C:\git\gitstudio\.env",
+    ".env"
+)
+
+# Resolve GitHub Personal Access Token
 $token = $env:GITHUB_TOKEN
-if (-not $token -and (Test-Path ".env")) {
-    $envContent = Get-Content ".env" | Where-Object { $_ -match "^GITHUB_TOKEN=" }
-    if ($envContent) {
-        $token = ($envContent -split "=", 2)[1].Trim('"').Trim("'")
+if (-not $token) {
+    foreach ($cand in $envCandidates) {
+        if (Test-Path $cand) {
+            $envContent = Get-Content $cand | Where-Object { $_ -match "^GITHUB_TOKEN=" }
+            if ($envContent) {
+                $token = ($envContent -split "=", 2)[1].Trim('"').Trim("'")
+                if ($token) { break }
+            }
+        }
     }
 }
 if ($token -and $token.Contains("ujYlOmZKzBTQ49Z2SmfxEHWV4zrhTZ0uE2fZ")) {
     $token = ""
 }
 
+# Prompt user for token if not currently configured
+if (-not $token) {
+    Write-Host "`n[AUTH NOTICE] No GitHub token found in .env or environment." -ForegroundColor Yellow
+    Write-Host "To pull/clone private repositories (Tribernachi-Foundation, GestaltCE, primeID), a PAT is required." -ForegroundColor Yellow
+    $enteredToken = Read-Host "Paste your GitHub Personal Access Token (or press Enter to proceed unauthenticated)"
+    if ($enteredToken) {
+        $token = $enteredToken.Trim()
+        $targetEnv = Join-Path $scriptDir ".env"
+        "GITHUB_TOKEN=`"$token`"" | Out-File -FilePath $targetEnv -Encoding utf8
+        Write-Host "Token saved to $targetEnv for future executions." -ForegroundColor Green
+    }
+}
+
 # Load masterCatalog.json for full workspace coverage
-$catalogFile = "masterCatalog.json"
+$catalogCandidates = @(
+    (Join-Path $scriptDir "masterCatalog.json"),
+    "C:\git\rick\gitstudio-desktop\masterCatalog.json",
+    "C:\git\gitstudio\masterCatalog.json",
+    "masterCatalog.json"
+)
 $masterCatalog = @()
-if (Test-Path $catalogFile) {
-    try {
-        $masterCatalog = Get-Content $catalogFile -Raw | ConvertFrom-Json
-    } catch {}
+foreach ($catCand in $catalogCandidates) {
+    if (Test-Path $catCand) {
+        try {
+            $masterCatalog = Get-Content $catCand -Raw | ConvertFrom-Json
+            Write-Host "Loaded repository catalog from $catCand with $($masterCatalog.Count) repositories." -ForegroundColor DarkGray
+            break
+        } catch {}
+    }
 }
 
 $workspaceMap = @(
@@ -100,24 +136,29 @@ foreach ($ws in $workspaceMap) {
                 if ($token) {
                     git -C $repoPath remote set-url origin $cloneUrl 2>$null
                 }
-                $pullOutput = (git -C $repoPath pull --ff-only 2>&1 | Out-String).Trim()
+                $curBranch = (git -C $repoPath rev-parse --abbrev-ref HEAD 2>$null)
+                if ($curBranch) { $curBranch = $curBranch.Trim() }
+                if (-not $curBranch -or $curBranch -eq "HEAD") {
+                    $curBranch = if ($r.defaultBranch) { $r.defaultBranch } else { "main" }
+                }
+                $pullOutput = (git -C $repoPath pull origin $curBranch 2>&1 | Out-String).Trim()
 
                 if ($LASTEXITCODE -eq 0) {
                     if ($pullOutput -match "Already up to date" -or $pullOutput -match "up to date") {
                         Write-Host " [UP TO DATE]" -ForegroundColor Green
                         $upToDateCount++
-                        $logLines.Add("   [OK] $repoName ... UP TO DATE")
+                        $logLines.Add("   [OK] $repoName [$curBranch] ... UP TO DATE")
                     } else {
                         Write-Host " [UPDATED]" -ForegroundColor Cyan
                         $updatedCount++
                         $firstLine = ($pullOutput -split "`n")[0]
-                        $logLines.Add("   [UPDATED] $repoName ... $firstLine")
+                        $logLines.Add("   [UPDATED] $repoName [$curBranch] ... $firstLine")
                     }
                 } else {
                     Write-Host " [ATTENTION]" -ForegroundColor Yellow
                     $failedCount++
                     $firstErr = ($pullOutput -split "`n")[0]
-                    $logLines.Add("   [WARN] $repoName ... $firstErr")
+                    $logLines.Add("   [WARN] $repoName [$curBranch] ... $firstErr")
                 }
             } else {
                 Write-Host "   [$repoName] Not yet on disk. Cloning..." -NoNewline -ForegroundColor Yellow
@@ -148,15 +189,26 @@ foreach ($ws in $workspaceMap) {
             $repoPath = $dir.FullName
             Write-Host "   [$repoName] Pulling..." -NoNewline -ForegroundColor White
 
-            $pullOutput = (git -C $repoPath pull --ff-only 2>&1 | Out-String).Trim()
+            if ($token) {
+                $remUrl = (git -C $repoPath config --get remote.origin.url 2>$null).Trim()
+                if ($remUrl -and $remUrl.StartsWith("https://github.com/")) {
+                    $authRem = $remUrl.Replace("https://github.com/", "https://${token}@github.com/")
+                    git -C $repoPath remote set-url origin $authRem 2>$null
+                }
+            }
+            $dirBranch = (git -C $repoPath rev-parse --abbrev-ref HEAD 2>$null)
+            if ($dirBranch) { $dirBranch = $dirBranch.Trim() }
+            if (-not $dirBranch -or $dirBranch -eq "HEAD") { $dirBranch = "main" }
+
+            $pullOutput = (git -C $repoPath pull origin $dirBranch 2>&1 | Out-String).Trim()
             if ($LASTEXITCODE -eq 0) {
                 Write-Host " [OK]" -ForegroundColor Green
                 $upToDateCount++
-                $logLines.Add("   [OK] $repoName ... UP TO DATE")
+                $logLines.Add("   [OK] $repoName [$dirBranch] ... UP TO DATE")
             } else {
                 Write-Host " [ATTN]" -ForegroundColor Yellow
                 $failedCount++
-                $logLines.Add("   [WARN] $repoName ... $pullOutput")
+                $logLines.Add("   [WARN] $repoName [$dirBranch] ... $pullOutput")
             }
         }
     }
@@ -206,7 +258,7 @@ $htmlContent = @"
     <div class="card"><div class="card-val" style="color: #f87171;">$failedCount</div><div class="card-lbl">Attention</div></div>
   </div>
   <h3>Console Execution Log</h3>
-  <pre>$([System.Web.HttpUtility]::HtmlEncode(($logLines -join "`n") + "`n`n" + $summaryBox))</pre>
+  <pre>$([System.Net.WebUtility]::HtmlEncode(($logLines -join "`n") + "`n`n" + $summaryBox))</pre>
   <div class="footer">GitStudio Desktop v2.4.0 · Local Workspace Synchronization</div>
 </body>
 </html>

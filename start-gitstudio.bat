@@ -41,6 +41,17 @@ if not exist "node_modules\" (
     echo [1/3] Dependencies verified.
 )
 
+:: Ensure Git repository tracking is initialized so 'git pull' works in this folder
+if not exist ".git\" (
+    echo [*] Initializing Git repository tracking for GitStudio Desktop...
+    call git init >nul 2>nul
+    call git remote add origin https://github.com/rickpeters112233/gitstudio-desktop.git >nul 2>nul
+    call git fetch origin main >nul 2>nul
+    call git branch -M main >nul 2>nul
+    call git branch --set-upstream-to=origin/main main >nul 2>nul
+    echo [*] Git tracking enabled! 'git pull origin main' will now work directly in this folder.
+)
+
 :: Wait 2 seconds and open browser to Port 8080
 echo [2/3] Opening default browser to http://localhost:8080...
 start "" "http://localhost:8080"

@@ -15,12 +15,26 @@ Write-Host "  - Tribernachi-Foundation:  C:\git\trib" -ForegroundColor Yellow
 Write-Host "  - rickpeters112233:       C:\git\rick" -ForegroundColor Yellow
 Write-Host "==============================================================" -ForegroundColor Cyan
 
-# 1. Resolve GitHub Personal Access Token
+# 1. Resolve Script Directory and Files
+$scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
+$envCandidates = @(
+    (Join-Path $scriptDir ".env"),
+    "C:\git\rick\gitstudio-desktop\.env",
+    "C:\git\gitstudio\.env",
+    ".env"
+)
+
+# Resolve GitHub Personal Access Token
 $token = $env:GITHUB_TOKEN
-if (-not $token -and (Test-Path ".env")) {
-    $envContent = Get-Content ".env" | Where-Object { $_ -match "^GITHUB_TOKEN=" }
-    if ($envContent) {
-        $token = ($envContent -split "=", 2)[1].Trim('"').Trim("'")
+if (-not $token) {
+    foreach ($cand in $envCandidates) {
+        if (Test-Path $cand) {
+            $envContent = Get-Content $cand | Where-Object { $_ -match "^GITHUB_TOKEN=" }
+            if ($envContent) {
+                $token = ($envContent -split "=", 2)[1].Trim('"').Trim("'")
+                if ($token) { break }
+            }
+        }
     }
 }
 if ($token -and $token.Contains("ujYlOmZKzBTQ49Z2SmfxEHWV4zrhTZ0uE2fZ")) {
@@ -34,8 +48,9 @@ if (-not $token) {
     $enteredToken = Read-Host "Paste your GitHub Personal Access Token (or press Enter to use local catalog)"
     if ($enteredToken) {
         $token = $enteredToken.Trim()
-        "GITHUB_TOKEN=`"$token`"" | Out-File -FilePath ".env" -Encoding utf8
-        Write-Host "Token saved to .env for future executions." -ForegroundColor Green
+        $targetEnv = Join-Path $scriptDir ".env"
+        "GITHUB_TOKEN=`"$token`"" | Out-File -FilePath $targetEnv -Encoding utf8
+        Write-Host "Token saved to $targetEnv for future executions." -ForegroundColor Green
     }
 }
 
@@ -46,15 +61,21 @@ if ($token) {
     $headers["Authorization"] = "Bearer $token"
 }
 
-# Load fallback catalog from masterCatalog.json if present
-$catalogFile = "masterCatalog.json"
+# Load fallback catalog from masterCatalog.json
+$catalogCandidates = @(
+    (Join-Path $scriptDir "masterCatalog.json"),
+    "C:\git\rick\gitstudio-desktop\masterCatalog.json",
+    "C:\git\gitstudio\masterCatalog.json",
+    "masterCatalog.json"
+)
 $localCatalog = @()
-if (Test-Path $catalogFile) {
-    try {
-        $localCatalog = Get-Content $catalogFile -Raw | ConvertFrom-Json
-        Write-Host "Loaded local repository catalog with $($localCatalog.Count) pre-indexed repositories." -ForegroundColor DarkGray
-    } catch {
-        Write-Host "Notice: masterCatalog.json could not be parsed." -ForegroundColor DarkGray
+foreach ($catCand in $catalogCandidates) {
+    if (Test-Path $catCand) {
+        try {
+            $localCatalog = Get-Content $catCand -Raw | ConvertFrom-Json
+            Write-Host "Loaded repository catalog from $catCand with $($localCatalog.Count) repositories." -ForegroundColor DarkGray
+            break
+        } catch {}
     }
 }
 
@@ -125,7 +146,11 @@ function Sync-GroupRepos {
             if ($token) {
                 git -C $dest remote set-url origin $cloneUrl 2>$null
             }
-            $pullOut = (git -C $dest pull --ff-only 2>&1 | Out-String).Trim()
+            $curBranch = (git -C $dest rev-parse --abbrev-ref HEAD 2>$null)
+            if ($curBranch) { $curBranch = $curBranch.Trim() }
+            if (-not $curBranch -or $curBranch -eq "HEAD") { $curBranch = "main" }
+
+            $pullOut = (git -C $dest pull origin $curBranch 2>&1 | Out-String).Trim()
             if ($LASTEXITCODE -eq 0) {
                 Write-Host " [OK]" -ForegroundColor Green
                 $alreadyThere++

@@ -502,17 +502,25 @@ app.post('/api/git/action', (req: Request, res: Response) => {
 
       if (fs.existsSync(normalizedDest)) {
         try {
+          if (GITHUB_TOKEN) {
+            const authRemote = `https://${GITHUB_TOKEN}@github.com/${repoFullName}.git`;
+            try {
+              execSync(`git -C "${normalizedDest}" remote set-url origin "${authRemote}"`, { stdio: 'pipe', timeout: 5000 });
+            } catch (e) {}
+          }
           const res = execSync(`git -C "${normalizedDest}" pull`, {
             encoding: 'utf-8',
             stdio: 'pipe',
-            timeout: 30000,
+            timeout: 35000,
           });
           output = [
             `$ git -C "${normalizedDest}" pull`,
             res.trim() || 'Already up to date.',
           ].join('\n');
+          success = true;
         } catch (err: any) {
           output = `git pull failed:\n${(err.stderr || err.stdout || err.message).toString()}`;
+          success = false;
         }
       } else {
         output = [
@@ -814,32 +822,69 @@ app.post('/api/batch/pull-all', async (req: Request, res: Response) => {
     }
 
     const hasGit = fs.existsSync(targetPath) && fs.existsSync(path.join(targetPath, '.git'));
+    let activeBranch = branch;
 
     if (hasGit) {
       try {
-        const { stdout, stderr } = await execPromise(`git -C "${targetPath}" pull --ff-only`, { timeout: 10000 });
+        // Authenticate remote with token if available
+        if (GITHUB_TOKEN) {
+          const authRemote = `https://${GITHUB_TOKEN}@github.com/${r.fullName}.git`;
+          try {
+            execSync(`git -C "${targetPath}" remote set-url origin "${authRemote}"`, { stdio: 'pipe', timeout: 5000 });
+          } catch (e) {}
+        }
+
+        // Detect active branch or fallback to default
+        try {
+          const branchOut = execSync(`git -C "${targetPath}" rev-parse --abbrev-ref HEAD`, { encoding: 'utf-8', stdio: 'pipe' }).trim();
+          if (branchOut && branchOut !== 'HEAD') {
+            activeBranch = branchOut;
+          }
+        } catch (e) {}
+
+        const { stdout, stderr } = await execPromise(`git -C "${targetPath}" pull origin ${activeBranch}`, { timeout: 35000 });
         const cleanOut = (stdout || stderr || '').trim().replace(/\r?\n/g, ' ');
         if (cleanOut.includes('Already up to date') || cleanOut.includes('up to date')) {
-          logLines.push(`  [OK] ${r.name} [${branch}] ... Already up to date`);
+          logLines.push(`  [OK] ${r.name} [${activeBranch}] ... Already up to date`);
           upToDateCount++;
         } else {
-          logLines.push(`  [PULLED] ${r.name} [${branch}] ... ${cleanOut.slice(0, 80)}`);
+          logLines.push(`  [PULLED] ${r.name} [${activeBranch}] ... ${cleanOut.slice(0, 80)}`);
           updatedCount++;
         }
       } catch (err: any) {
         const errMsg = (err.stderr || err.stdout || err.message || '').trim().replace(/\r?\n/g, ' ');
-        if (errMsg.includes('Not possible to fast-forward') || errMsg.includes('divergent') || errMsg.includes('conflict')) {
-          logLines.push(`  [ATTN] ${r.name} [${branch}] ... Diverged branch or uncommitted changes`);
+        if (
+          errMsg.includes('Not possible to fast-forward') ||
+          errMsg.includes('divergent') ||
+          errMsg.includes('conflict') ||
+          errMsg.includes('Your local changes') ||
+          errMsg.includes('overwritten by merge')
+        ) {
+          logLines.push(`  [ATTN] ${r.name} [${activeBranch}] ... Local changes or divergent branch (stash or commit first)`);
           switchedBranchCount++;
         } else {
-          logLines.push(`  [WARN] ${r.name} [${branch}] ... ${errMsg.slice(0, 90)}`);
+          logLines.push(`  [WARN] ${r.name} [${activeBranch}] ... ${errMsg.slice(0, 90)}`);
           failedCount++;
         }
       }
     } else if (process.platform === 'win32') {
-      // Local Windows: directory does not exist on disk yet
-      logLines.push(`  [NOT CLONED] ${r.name} ... Target folder ${targetPath} not found`);
-      upToDateCount++;
+      // Local Windows: directory does not exist on disk yet. Auto-clone it!
+      try {
+        const parentDir = path.dirname(targetPath);
+        if (!fs.existsSync(parentDir)) {
+          fs.mkdirSync(parentDir, { recursive: true });
+        }
+        const cloneUrl = GITHUB_TOKEN
+          ? `https://${GITHUB_TOKEN}@github.com/${r.fullName}.git`
+          : `https://github.com/${r.fullName}.git`;
+        execSync(`git clone --quiet "${cloneUrl}" "${targetPath}"`, { stdio: 'pipe', timeout: 60000 });
+        logLines.push(`  [CLONED] ${r.name} [${branch}] ... Successfully cloned into ${targetPath}`);
+        clonedNewCount++;
+      } catch (cloneErr: any) {
+        const cloneMsg = (cloneErr.stderr || cloneErr.stdout || cloneErr.message || '').trim().replace(/\r?\n/g, ' ');
+        logLines.push(`  [WARN] ${r.name} ... Target folder not found & clone failed: ${cloneMsg.slice(0, 80)}`);
+        failedCount++;
+      }
     } else {
       // Cloud preview / remote sync mode
       logLines.push(`  [OK] ${r.name} [${branch}] ... Synced with GitHub (${r.fullName})`);
