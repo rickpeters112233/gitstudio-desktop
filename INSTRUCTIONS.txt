@@ -1,48 +1,58 @@
-=====================================================================
- GIT TOOLS GUI  —  Pull All + Daily Report, side by side
-=====================================================================
+========================================================================
+GENERIC PROJECT INSTRUCTIONS
+version: 0.2.0
+========================================================================
 
-INSTALL LOCATION (exact):
+HARD WORKING RULES (all mandatory, no exceptions)
 
-  C:\tools\gittools\
-    git_tools_gui.py         the GUI (left: Pull, right: Report)
-    git_pull_all.py          pull engine
-    github_daily_report.py   report engine
-    RUN_GUI.bat              run WITHOUT building an exe
-    BUILD_EXE.bat            build GitToolsGUI.exe (optional, run once)
-    INSTRUCTIONS.txt         this file
-    PROJECT_INSTRUCTIONS.md  mandatory rules
-    reports\                 created automatically - all HTML reports land here
+1. ONE STEP AT A TIME - give exactly one command/action, wait for the result before giving the next.
+2. ALWAYS REPEAT YOUR UNDERSTANDING OF MY INSTRUCTIONS FOR APPROVAL BEFORE CODING.
+3. Code review all new code.
+4. Code check all code. Mandatory syntax checks before any delivery (zero errors).
+5. Do not add changes to code that do not correct problems - ask first.
+6. When coding changes, conserve the original format of the file as much as possible.
+7. Full file rewrites only - never partial patches. Read the existing file first.
+8. Test before delivery - write a test exercising the exact failure mode, confirm it passes.
 
----------------------------------------------------------------------
- OPTION A — RUN WITHOUT AN EXE
----------------------------------------------------------------------
-  1. Double-click RUN_GUI.bat
-     (first run installs the 'requests' library automatically)
+VERSION CONTROL
+9. Every file carries a version number.
+10. File names include the version.
+11. Every change increments the version.
+12. Changelog comment block records what changed and why.
+13. Paired files ship together under one version sequence.
+14. Git commit message format: feat|fix|refactor(scope): description
+15. Continuous change log kept.
+16. Deliverable zip files tracked in release manifest with SHA-256 hashes.
+17. Graphics/UI: bright white on black background.
 
----------------------------------------------------------------------
- OPTION B — BUILD THE EXE (once)
----------------------------------------------------------------------
-  1. Double-click BUILD_EXE.bat
-  2. Wait for "Done!" - GitToolsGUI.exe appears in this folder
-  3. From then on just double-click GitToolsGUI.exe
+MANDATORY TROUBLESHOOTING PROTOCOL (Permanent Memory Rules)
 
-  NOTE: If pyinstaller was just installed for the first time,
-  close the window and run BUILD_EXE.bat once more.
+18. THE "WORKS IN APP / FAILS ON DESKTOP" RULE:
+    Whenever code behaves differently in the preview environment than on the user's PC, NEVER guess.
+    Immediately check:
+    - Platform branching (process.platform === 'win32' vs 'linux').
+    - Path separators (forward / vs backward \ in Windows).
+    - Real disk I/O vs mocked/containerized fallbacks.
+    - Blocking vs non-blocking calls (execSync blocks Node event loop).
 
----------------------------------------------------------------------
- USING THE GUI
----------------------------------------------------------------------
-  LEFT PANEL  - Git Pull All
-    Click "Run Git Pull All" - watch every repo pull live in the
-    console below. HTML summary saved to reports\ when finished.
+19. THE "UNEXPECTED TOKEN < / <!DOCTYPE" PROTOCOL:
+    This error ALWAYS means an API endpoint returned HTML instead of JSON.
+    - Check if a proxy, timeout (504), or Vite SPA fallback handled the route.
+    - Always add strict Express route guards (app.all('/api/*', ...)) before static/Vite middleware.
+    - Always validate res.headers.get('content-type') before calling res.json().
 
-  RIGHT PANEL - GitHub Daily Report
-    Pick daily / weekly / monthly, click "Run Report" - watch every
-    repo scanned live. HTML report saved to reports\.
+20. THE LONG-RUNNING / BATCH SYNC RULE:
+    NEVER execute batch operations as a single synchronous blocking HTTP request.
+    - Mandatory: Use Server-Sent Events (SSE) or streaming chunked NDJSON.
+    - Output must stream line-by-line in real time so the user sees progress.
+    - Connections must stay active to prevent browser/proxy 30-60s timeouts.
 
-  The two panels run independently - you can run both at once.
-  "Reports" button on either panel opens the reports\ folder.
+21. SUBPROCESS & CHILD PROCESS ANTI-HANG RULE:
+    - All child process executions MUST specify a strict timeout (e.g. timeout: 15000).
+    - Git child processes MUST include GIT_TERMINAL_PROMPT: '0' in env.
+    - Prefer asynchronous execPromise/spawn over blocking execSync.
 
-  API token and GestaltCE org are already baked in - nothing to enter.
-=====================================================================
+22. REFERENCE ARCHITECTURE FIRST RULE:
+    When the user provides a working reference implementation (such as Python scripts that succeed where Web code fails),
+    dissect its exact execution flow (threading, stash/pop, branch checks, live streaming) BEFORE writing new code.
+========================================================================

@@ -81,5 +81,46 @@ UI / GRAPHICS
     on black background. This applies to ALL graphical output.
 
 ========================================================================
-END OF FILE - generic_project_instructions_v0.1.0.txt
+MANDATORY TROUBLESHOOTING PROTOCOL (Permanent Memory Rules)
+========================================================================
+
+18. THE "WORKS IN APP / FAILS ON DESKTOP" RULE:
+    Whenever code behaves differently in the preview environment than on
+    the user's PC, NEVER guess. Immediately check:
+    - Platform branching (process.platform === 'win32' vs 'linux').
+    - Path separators (forward / vs backward \ in Windows).
+    - Real disk I/O vs mocked/containerized fallbacks.
+    - Blocking vs non-blocking calls (execSync blocks Node event loop).
+
+19. THE "UNEXPECTED TOKEN < / <!DOCTYPE" PROTOCOL:
+    This error ALWAYS means an API endpoint returned HTML instead of JSON.
+    Whenever this occurs:
+    - Never assume the endpoint succeeded.
+    - Check if a proxy, timeout (504), or Vite SPA fallback handled the route.
+    - Always add strict Express route guards (app.all('/api/*', ...))
+      before static/Vite middleware to guarantee JSON responses.
+    - Always validate res.headers.get('content-type') before calling res.json().
+
+20. THE LONG-RUNNING / BATCH SYNC RULE:
+    NEVER execute batch operations (e.g. syncing multiple git repos) as a
+    single synchronous blocking HTTP request.
+    - Mandatory: Use Server-Sent Events (SSE) or streaming chunked NDJSON.
+    - Output must stream line-by-line in real time so the user sees progress.
+    - Connections must stay active to prevent browser/proxy 30-60s timeouts.
+
+21. SUBPROCESS & CHILD PROCESS ANTI-HANG RULE:
+    - All child process executions (git, python, shell) MUST specify a strict
+      timeout (e.g. timeout: 15000).
+    - Git child processes MUST include GIT_TERMINAL_PROMPT: '0' in env to
+      prevent silent background hangs on interactive credential prompts.
+    - Prefer asynchronous execPromise/spawn over blocking execSync.
+
+22. REFERENCE ARCHITECTURE FIRST RULE:
+    When the user provides a working reference implementation (such as
+    Python scripts that succeed where Web code fails), dissect its exact
+    execution flow (threading, stash/pop, branch checks, live streaming)
+    BEFORE writing new code. Do not substitute generic assumptions.
+
+========================================================================
+END OF FILE - generic_project_instructions_v0.2.0.txt
 ========================================================================

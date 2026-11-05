@@ -35,6 +35,7 @@ def pack():
         'masterCatalog.json',
         'PROJECT_INSTRUCTIONS.md',
         'INSTRUCTIONS.txt',
+        'TROUBLESHOOTING_POSTMORTEM.md',
         'RUN_GUI.bat',
         'BUILD_EXE.bat',
         'git_tools_gui.py',

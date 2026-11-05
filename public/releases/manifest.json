@@ -3,9 +3,9 @@
     "version": "2.5.2",
     "filename": "gitstudio-desktop_v2.5.2.zip",
     "path": "/releases/gitstudio-desktop_v2.5.2.zip",
-    "sizeBytes": 309747,
-    "sha256": "04d0ff75613a6778cf1629191950050cb5bff901237dba287c961f2895196e4f",
-    "timestamp": "2026-11-05T20:33:19.697422+00:00",
+    "sizeBytes": 318081,
+    "sha256": "7e7073e1f23fcedaf7183262d84bd6430a4478cb85a02ddc848ca52eb96d969b",
+    "timestamp": "2026-11-05T20:51:48.825823+00:00",
     "changelog": [
       "Fixed unexpected token / JSON parse error on desktop with bulletproof JSON error guards on all /api routes",
       "Added live Server-Sent Events (SSE) streaming for Git Pull All so progress renders line-by-line without freezing",
